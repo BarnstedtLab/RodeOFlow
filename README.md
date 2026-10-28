@@ -1,7 +1,8 @@
-# MouseFlow
+# RodeOFlow
+Headfixed Rodent Tracking Using Optical Flow
 
 ## Description
-A Python toolbox to quantify fined-scale facial and bodily movement in headfixed mice. MouseFlow integrates pose estimation, optical flow, and kinematic analyses in a single open-source workflow, reducing manual labelling and simultaneously capturing global behavioral dynamics
+A Python toolbox to quantify fined-scale facial and bodily movement in headfixed mice. RodeOFlow integrates pose estimation, optical flow, and kinematic analyses in a single open-source workflow, reducing manual labelling and simultaneously capturing global behavioral dynamics
 ![Sample image](img/103_behaviour.gif)
 
 ## Installation
@@ -11,7 +12,7 @@ Otherwise, just follow along.
  
 0. Make sure you have conda available on your system (otherwise, please follow the steps from the [official documentation](https://docs.conda.io/projects/conda/en/stable/user-guide/install/index.html)
 1. Download either the [linux setup file](enivronment_setup_linux.yaml) or the [windows setup file](enivronment_setup_windows.yaml), depending on your system.
-3. Setup a fresh conda environment with all dependencies needed for mouseflow by running
+3. Setup a fresh conda environment with all dependencies needed for RodeOFlow by running
 ```
 conda env create -f path/to/downloaded/setup_file.yaml
 ```
@@ -24,14 +25,14 @@ conda activate mouseflow_env
 ```
 pip install --pre deeplabcut
 ```
-6. Finally, install the mouseflow package
+6. Finally, install the RodeOFlow package
 ```
-pip install git+https://github.com/BarnstedtLab/MouseFlow --no-deps
+pip install git+https://github.com/BarnstedtLab/RodeOFlow --no-deps
 ```
 (Users who directly came here without following the previous steps, please run the above command without `--no-deps`)
 
 ## Workflow
-Currently, Mouseflow supports 3 main functions:
+Currently, RodeOFlow supports 3 main functions:
 
 1. `detect_keypoints(vid_dir, face_key='face', body_key='body, face_model='DLC', body_model='DLC', filetype='.mp4')` finds all face and body videos in a directory of choice (vid_dir) and applies pre-trained DeepLabCut or LightningPose models (automatically downloaded during first use) on these videos.
 Make sure all your body videos contain the provided `body_key` somewhere in their filename and the face videos the provided `face_key`.
@@ -67,7 +68,7 @@ runMF(dlc_dir) runs across the resulting marker files and automatically saves da
 This software relies heavily on [DeepLabCut](https://github.com/DeepLabCut/DeepLabCut/), [LightningPose](https://github.com/paninski-lab/lightning-pose), [RAFT](https://github.com/princeton-vl/RAFT) and [OpenCV](https://opencv.org/) libraries for its functionality.
 
 ## Contributors
-MouseFlow is under active development and we welcome community contributions. We welcome your feedbacks and ideas. Please get in touch :) 
+RodeOFlow is under active development and we welcome community contributions. We welcome your feedbacks and ideas. Please get in touch :) 
 
 We thank our collaborators: Janelle Pakan (LIN Magdeburg), Emilie Macé (UMG Göttingen), Simon Musall (RWTH Aachen), Jan Gründemann (DZNE Bonn), Yangfan Peng (Charité Berlin), Ricardo Paricio-Montesinos (DZNE Bonn), Sanja Mikulovic (LIN Magdeburg), Petra Mocellin (LIN Magdeburg), Liudmila Sosulina (LIN Magdeburg), and Falko Fuhrmann (DZNE Bonn) for generously sharing their data, which allowed us to enhance the performance of our pre-trained models.
 
