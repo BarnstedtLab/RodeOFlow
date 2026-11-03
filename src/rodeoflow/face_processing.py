@@ -333,7 +333,7 @@ class FaceAnalyzer():
 
         return False # safe fallback
 
-    def _facemotion(self, videopath, masks, face_anchor, videoslice=[], use_nmf_msks=True):
+    def _facemotion(self, videopath, masks, face_anchor, videoslice=[], use_nmf_masks=True):
         cap = cv2.VideoCapture(str(videopath))
         if videoslice:
             cap.set(cv2.CAP_PROP_POS_FRAMES, videoslice[0])
@@ -346,7 +346,7 @@ class FaceAnalyzer():
         cap.release()
 
         # Generate NMF masks
-        if use_nmf_msks:
+        if use_nmf_masks:
             print("Generating dynamic masks via NMF...")
             dyn_masks = DynamicMasks(str(videopath), width, height)
             dyn_masks.set_masks(masks)
@@ -502,7 +502,7 @@ class FaceAnalyzer():
 
         return envelope, pd.Series(peak_flags, index=series.index)
 
-    def analyse(self, face_file: Path, landmark_dir: Path, use_nmf_msks=True):
+    def analyse(self, face_file: Path, landmark_dir: Path, use_nmf_masks=True):
         out_file = face_file.with_name(face_file.stem + '_rodeoflow.h5')
         out_grid = face_file.with_name(face_file.stem + '_optical_flow_grid.npz')
         if out_file.exists() and not getattr(self, 'overwrite', False):
@@ -535,7 +535,7 @@ class FaceAnalyzer():
             self.opticalflow_enigne = 'DIS'
             print("No CUDA support detected. Processing with DIS optical flow on your CPU...")
         face_motion, flow_grid = self._facemotion(
-            video_file, face_masks, face_anchor, use_nmf_msks=use_nmf_msks)
+            video_file, face_masks, face_anchor, use_nmf_masks=use_nmf_masks)
 
         # Perform PCA on Nose (Reference: Downwards, positive Y)
         nose_pca_proj, _ = self._perform_pca(
