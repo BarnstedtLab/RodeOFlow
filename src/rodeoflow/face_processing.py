@@ -44,7 +44,7 @@ class FaceAnalyzer():
         if cfg:
             self.cfg = cfg
         else:
-            conf_thresh = None
+            conf_thresh = 0.5
             interpolation_limits_sec={
                 'pupil': 2,
                 'eyelid': 1,
@@ -352,10 +352,14 @@ class FaceAnalyzer():
             dyn_masks.set_masks(masks)
             dyn_masks.set_anchors(face_anchor)
             masks_sp, px_counts = dyn_masks.generate_updated_masks(prev_gray)
-
-            # Convert sparse masks back to a list of dense 2D arrays
+            
+            # Convert sparse masks back to a list of dense 2D arrays 
             dense_masks_flat = masks_sp.toarray()
-            updated_masks = [m.reshape((height, width)).astype(np.float32) for m in dense_masks_flat]
+            updated_masks = []
+            for m in dense_masks_flat:
+                # Reshape and ensure mask matches (height, width) orientation
+                mask_2d = m.reshape((height, width), order='C').astype(np.float32)
+                updated_masks.append(mask_2d)
             masks = updated_masks # Overwrite the original masks
         else:
             print("Continuing without NMF masks")
@@ -369,7 +373,6 @@ class FaceAnalyzer():
         else:
             raise RuntimeError(f"Unexpected flow type {self.opticalflow_enigne}, expected 'DIS' or 'FB'.")
 
-        # Ensure the OF engine respects the FaceAnalyzer's setting!
         gpu_flow.save_vectors = self.save_vectorfield
 
         if videoslice:
@@ -378,8 +381,6 @@ class FaceAnalyzer():
             start, end = 0, None
 
         gpu_flow.open(videopath, start=start, end=end)
-
-        # Pass `masks`, NOT `updated_masks`, to avoid crashing if NMF is disabled
         gpu_flow.set_masks(masks)
         out = gpu_flow.run()
 
