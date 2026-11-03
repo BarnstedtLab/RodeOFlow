@@ -236,6 +236,8 @@ class FarnebackOF(BaseOF):
         self.gpu_gray_f32 = None
         self.host_buf = None 
 
+        self.anchors = None
+
         self.save_vectors = False
         self.downsample_factor = 8
         self.ready_evt = cv2.cuda.Event()
@@ -252,6 +254,17 @@ class FarnebackOF(BaseOF):
             
         self.copy_stream.waitForCompletion()
         print(f"{len(self.masks_np)} Masks uploaded to GPU")
+
+    def set_anchors(self, anchors: pd.DataFrame):
+        nosetip = anchors['nosetip'].values
+        tearduct = anchors['tearduct'].values
+        mouth = anchors['mouthtip'].values
+        chin = anchors['chin'].values
+        forehead = anchors['forehead'].values
+
+        whiskerpad_center = np.vstack([nosetip, tearduct, mouth]).mean(axis=0)
+
+        self.anchors = np.array([nosetip, whiskerpad_center, mouth, chin, tearduct, forehead])
     
     def video_info(self):
         return self.nframes, self.fps, self.height, self.width
