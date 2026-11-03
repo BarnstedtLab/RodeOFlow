@@ -1,75 +1,128 @@
 # RodeOFlow
-Headfixed Rodent Tracking Using Optical Flow
 
-## Description
-A Python toolbox to quantify fined-scale facial and bodily movement in headfixed mice. RodeOFlow integrates pose estimation, optical flow, and kinematic analyses in a single open-source workflow, reducing manual labelling and simultaneously capturing global behavioral dynamics
-![Sample image](img/103_behaviour.gif)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="img/RodeOFlow_black.png">
+    <source media="(prefers-color-scheme: light)" srcset="img/RodeOFlow_white.png">
+    <img alt="RodeOFlow logo" src="img/RodeOFlow_white.png" width="500">
+  </picture>
+</p>
+
+RodeOFlow is a Python toolbox for quantifying facial and body movements in head-fixed mice. It combines pose estimation, dense optical flow, and kinematic analysis to extract synchronized movement features from video.
+
+![Example behavior](img/103_behaviour.gif)
 
 ## Installation
-<img align="right" width="300" height="300" src="https://github.com/user-attachments/assets/7a01dfbf-11f8-422a-bbee-c270868c1361"/>
-If you already have a working environment (with pytorch and deeplabcut installed) and do not want to create a new one, you can skip directly to step 6.
-Otherwise, just follow along.
- 
-0. Make sure you have conda available on your system (otherwise, please follow the steps from the [official documentation](https://docs.conda.io/projects/conda/en/stable/user-guide/install/index.html)
-1. Download either the [linux setup file](enivronment_setup_linux.yaml) or the [windows setup file](enivronment_setup_windows.yaml), depending on your system.
-3. Setup a fresh conda environment with all dependencies needed for RodeOFlow by running
+
+Create and activate a Conda environment using the setup file for your operating system.
+
+Linux:
+
+```bash
+conda env create -f environment_setup_linux.yaml
+conda activate rodeoflow
 ```
-conda env create -f path/to/downloaded/setup_file.yaml
+
+Windows:
+
+```bash
+conda env create -f environment_setup_windows.yaml
+conda activate rodeoflow
 ```
-4. Afterwards, you should have a new conda environment called `mouseflow_env`.
-Activate it by running
+
+
+DeepLabCut uses its PyTorch backend in this toolbox. If it is not already installed in your environment, install it with:
+
+```bash
+python -m pip install --pre deeplabcut
 ```
-conda activate mouseflow_env
+
+Install RodeOFlow from GitHub:
+
+```bash
+python -m pip install git+https://github.com/BarnstedtLab/RodeOFlow.git --no-deps
 ```
-5. Install deeplabcut (We need the `--pre` since we use Deeblabcut with Pytorch backend!)
-```
-pip install --pre deeplabcut
-```
-6. Finally, install the RodeOFlow package
-```
-pip install git+https://github.com/BarnstedtLab/RodeOFlow --no-deps
-```
-(Users who directly came here without following the previous steps, please run the above command without `--no-deps`)
+
+The `--no-deps` option assumes that the required dependencies are installed through the Conda environment and the DeepLabCut step above. If you are installing into an environment without those dependencies, omit `--no-deps`.
 
 ## Workflow
-Currently, RodeOFlow supports 3 main functions:
 
-1. `detect_keypoints(vid_dir, face_key='face', body_key='body, face_model='DLC', body_model='DLC', filetype='.mp4')` finds all face and body videos in a directory of choice (vid_dir) and applies pre-trained DeepLabCut or LightningPose models (automatically downloaded during first use) on these videos.
-Make sure all your body videos contain the provided `body_key` somewhere in their filename and the face videos the provided `face_key`.
-If no videos are found, double check that your provided `filetype` matches your actual video files!
-Note that LightingPose (`body_key='LP'`) will only work on linux machines.
-3. `runMF(dlc_dir, save_optical_flow_vectors=True)` performs the analysis that lays the foundation for behavioral quantification.. Details are discussed [below](#Kinematics-and-optical-flow-extraction)
-`dlc_dir` should point to the directory in which the keypoint analysis files from step 1 are saved.
-if `save_optical_flow_vectors` is enabled, the optical flow output will be saved as a vectorfield (might generate large files if videos are long!) in a seperate .npz file. 
-4. `generate_preview(mouseflow_file, face_keypoint_file, face_video_file, optical_flow_file)` generates a preview video (similar to the one shown above) allowing for a quick first visual inspection of all performed analysis.
-Currently, this works for the face analysis only.
+RodeOFlow provides four main functions. Run pose estimation first, then analyze the resulting keypoint files.
 
-### Kinematics and optical flow extraction
-runMF(dlc_dir) runs across the resulting marker files and automatically saves data frames including, among others, the following data:
-* Pupil diameter (extracted based on circular fit of 6 pupil markers)
-* Eye opening (based on distance of upper and lower eyelids)
-* Face regions (automatically segmented based on facial landmarks extracted from markers)
-  
-  _Automatic face segmentation on In-distribution data_
-  
-  <img src="img/faceregions.gif" alt="Sample image" width="300"/>
-  
-  _Automatic face segmentation on Out-of-distribution data from collaborators and the publicly available [IBL Brainwide Map](https://www.internationalbrainlab.com/data) dataset_
-  
-  <img width="300" height="300" src="https://github.com/user-attachments/assets/4f089a92-83c5-498d-a76d-e55a8ddba071"/>
+| Workflow | Function | Purpose |
+|---|---|---|
+| Face | `pose_face()` | Detect facial keypoints used to define regions for optical-flow analysis. |
+| Face | `analyse_face()` | Analyze facial movement and extract face features. |
+| Body | `pose_body()` | Detect body keypoints. |
+| Body | `analyse_body()` | Analyze body movement and extract gait features. |
 
-* Motion energy for each face region
-* Optical flow angle and magnitude for each face region (extracted using Farneback dense optical flow)
-* Whisking & sniffing frequency and phase
-* Paw movement, stride frequency, gait information (based on kinematics of paw markers)
-* Paw and tail angles
+### Face analysis
+
+```python
+from pathlib import Path
+from rodeoflow import pose_face, analyse_face
+
+video_dir = Path("/path/to/videos")
+keypoint_dir = video_dir / "rodeoflow"
+
+# Detect facial keypoints from videos in video_dir.
+pose_face(video_dir)
+
+# Analyze the generated facial keypoint files.
+analyse_face(keypoint_dir)
+```
+
+### Body analysis
+
+```python
+from pathlib import Path
+from rodeoflow import pose_body, analyse_body
+
+video_dir = Path("/path/to/videos")
+keypoint_dir = video_dir / "rodeoflow"
+
+# Detect body keypoints from videos in video_dir.
+pose_body(video_dir)
+
+# Analyze the generated body keypoint files.
+analyse_body(keypoint_dir)
+```
+
+When `video_dir` is a directory, the pose functions save keypoint outputs in its `rodeoflow` subdirectory. If you store the keypoint files elsewhere, pass that folder as `keypoint_dir`.
+
+The pose functions provide options for selecting a tracking engine, model weights, video format, crop region, and whether to overwrite existing outputs. Face analysis also provides options for selecting the optical-flow engine, using NMF masks, and saving optical-flow vector fields. Body analysis accepts an optional `StrideConfig` for configuring stride-cycle analysis.
+
+## Extracted features
+
+### Face
+
+Face analysis uses facial keypoints to define regions for dense optical-flow analysis. Extracted features include:
+
+- Regional facial motion signals
+- Pupil size and position
+- Eye opening, blink events, and saccade-related pupil movement
+- Nose and whisker-pad motion traces and frequency estimates
+- Mouth movement features
+
+### Body
+
+Body analysis extracts framewise body-motion features and stride-cycle gait measurements, including:
+
+- Paw, mouth, and tail movement
+- Body-part angles
+- Stride-cycle timing and measurements
+- A processing summary with stride-detection and quality information
+
+Analysis results are saved as HDF5 files with the suffix `_rodeoflow.h5`. Body analysis files contain a framewise `body` table, a `stride_cycles` table, and a `processing_summary` table.
 
 ## Dependencies
-This software relies heavily on [DeepLabCut](https://github.com/DeepLabCut/DeepLabCut/), [LightningPose](https://github.com/paninski-lab/lightning-pose), [RAFT](https://github.com/princeton-vl/RAFT) and [OpenCV](https://opencv.org/) libraries for its functionality.
+
+RodeOFlow uses [DeepLabCut](https://github.com/DeepLabCut/DeepLabCut), [Lightning Pose](https://github.com/paninski-lab/lightning-pose), [OpenCV](https://opencv.org/), and other Python packages listed in the environment setup files. Available tracking and optical-flow options depend on your setup.
 
 ## Contributors
-RodeOFlow is under active development and we welcome community contributions. We welcome your feedbacks and ideas. Please get in touch :) 
 
-We thank our collaborators: Janelle Pakan (LIN Magdeburg), Emilie Macé (UMG Göttingen), Simon Musall (RWTH Aachen), Jan Gründemann (DZNE Bonn), Yangfan Peng (Charité Berlin), Ricardo Paricio-Montesinos (DZNE Bonn), Sanja Mikulovic (LIN Magdeburg), Petra Mocellin (LIN Magdeburg), Liudmila Sosulina (LIN Magdeburg), and Falko Fuhrmann (DZNE Bonn) for generously sharing their data, which allowed us to enhance the performance of our pre-trained models.
+RodeOFlow is under active development. We welcome feedback, ideas, and community contributions.
 
-We are also greatful to Nick del Grosso (iBOTS iBehave Bonn) and Sangeetha Nandakumar (iBOTS iBehave Bonn) for their invaluable support and expertise in Python, especially during the early stage of setting up the package.
+We thank our collaborators Tobias Ackels and Anantu Sunil (University of Bonn), Irina Dudanova (University of Würzburg), Sonja Blumenstock (UCSD), Janelle Pakan (LIN Magdeburg), Emilie Macé (UMG Göttingen), Simon Musall (RWTH Aachen), Jan Gründemann (DZNE Bonn), Yangfan Peng (Charité Berlin), Ricardo Paricio-Montesinos (DZNE Bonn), Sanja Mikulovic (LIN Magdeburg), Petra Mocellin (LIN Magdeburg), Liudmila Sosulina (LIN Magdeburg), and Falko Fuhrmann (DZNE Bonn) for generously sharing their data, which helped improve our pretrained models.
+
+We are also grateful to Nick del Grosso and Sangeetha Nandakumar (iBOTS iBehave Bonn) for their support and Python expertise during the early development of the package.

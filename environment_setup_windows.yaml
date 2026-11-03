@@ -1,4 +1,4 @@
-name: mouseflow_env
+name: rodeoflow
 channels:
   - pytorch
   - nvidia

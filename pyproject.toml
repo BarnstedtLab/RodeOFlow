@@ -1,5 +1,5 @@
 [project]
-name = "MouseFlow"
+name = "RodeOFlow"
 version = "0.0.1"
 authors = [
   { name="Oliver Barnstedt", email="o.barnstedt@eni-g.de" },
@@ -22,5 +22,5 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/BarnstedtLab/MouseFlow"
-"Bug Tracker" = "https://github.com/BarnstedtLab/MouseFlow/issues"
+"Homepage" = "https://github.com/BarnstedtLab/RodeOFlow"
+"Bug Tracker" = "https://github.com/BarnstedtLab/RodeOFlow/issues"

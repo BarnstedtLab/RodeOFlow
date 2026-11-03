@@ -386,13 +386,13 @@ def fetch_files(face_video_file, body_video_file, analysis_dir):
     if body_video_file:
         body_video_path = Path(body_video_file)
         body_video_name = body_video_path.stem
-        dlc_body_file = find_file(analysis_dir, f"{body_video_name}*DLC*.h5", exclude_pattern="mouseflow")
+        dlc_body_file = find_file(analysis_dir, f"{body_video_name}*DLC*.h5", exclude_pattern="rodeoflow")
     
     if face_video_file:
         face_video_path = Path(face_video_file)
         face_video_name = face_video_path.stem
-        dlc_face_file = find_file(analysis_dir, f"{face_video_name}*DLC*.h5", exclude_pattern="mouseflow")
-        mf_file_face = find_file(analysis_dir, f"{face_video_name}*mouseflow.h5")
+        dlc_face_file = find_file(analysis_dir, f"{face_video_name}*DLC*.h5", exclude_pattern="rodeoflow")
+        mf_file_face = find_file(analysis_dir, f"{face_video_name}*rodeoflow.h5")
         of_file_face = find_file(analysis_dir, f"{face_video_name}*optical_flow_grid.npz")
 
     return dlc_body_file, dlc_face_file, mf_file_face, of_file_face
@@ -483,7 +483,7 @@ def generate_preview(
     n_frames=100,
     arrow_scale=0.5):
     if analysis_dir is None:
-        analysis_dir = str(Path(vid_file_face).parent / "mouseflow")
+        analysis_dir = str(Path(vid_file_face).parent / "rodeoflow")
     
     video_file_face_path = Path(vid_file_face)
     if out_file is None:
