@@ -1,6 +1,6 @@
 """
-Author: @Jakob Faust
-Date: 10.10.2026
+Author: @Jakob Faust (10.10.2026)
+Modified by: @Lam Bui (03.11.2026)
 
 Wrapper class for body and face keypoint models.
 Starts detection process of keypoints.
@@ -8,8 +8,8 @@ Starts detection process of keypoints.
 
 
 from pathlib import Path
-from mouseflow.utils.preprocess_video import flip_vid, crop_vid
-from mouseflow.apply_models import LPDetector, DLCDetector, download_models
+from rodeoflow.utils.preprocess_video import flip_vid, crop_vid
+from rodeoflow.apply_models import LPDetector, DLCDetector, download_models
 
 
 class KeypointDetector():
@@ -82,9 +82,9 @@ class KeypointDetector():
 
 
         if vid_path.is_dir():
-            dir_out = vid_path / 'mouseflow'
+            dir_out = vid_path / 'rodeoflow'
         else:
-            dir_out = vid_path.parent / 'mouseflow'
+            dir_out = vid_path.parent / 'rodeoflow'
 
         dir_out.mkdir(parents=True, exist_ok=True)
 
@@ -138,7 +138,7 @@ class KeypointDetector():
             body_files = body_files_flipped
 
         if not body_files:
-            print(f'No face {self.filetype_body} files found to process in {vid_dir}')
+            print(f'No body {self.filetype_body} files found to process in {vid_dir}')
             return None
         try:
             if n_videos > 0 and n_videos < len(body_files):
@@ -149,13 +149,13 @@ class KeypointDetector():
 
 
         if vid_path.is_dir():
-            dir_out = vid_path / 'mouseflow'
+            dir_out = vid_path / 'rodeoflow'
         else:
-            dir_out = vid_path.parent / 'mouseflow'
+            dir_out = vid_path.parent / 'rodeoflow'
 
         dir_out.mkdir(parents=True, exist_ok=True)
 
-        if cfg and self.keypoint_model_weights_face:
+        if cfg and self.keypoint_model_weights_body:
             for bodyfile in body_files:
                 body_file_path = Path(bodyfile)
                 base = body_file_path.stem
@@ -166,7 +166,7 @@ class KeypointDetector():
                     print(f"Skipping {body_file_path.name} (already labelled: {out_exists[0]}).")
                     continue
 
-                print("Applying BODY model:", cfg, "weights:", self.keypoint_model_weights_face)
+                print("Applying BODY model:", cfg, "weights:", self.keypoint_model_weights_body)
                 if self.keypoint_engine_body == 'LP':
                     det = LPDetector(cfg, self.keypoint_model_weights_body)
                 else:

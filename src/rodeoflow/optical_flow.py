@@ -26,7 +26,7 @@ import cv2
 import time
 from scipy import sparse
 
-from mouseflow.nmf import NMFBuilder
+from rodeoflow.nmf import NMFBuilder
 
 class DynamicMasks:
     def __init__(self, video_path, width, height, preset=cv2.DISOPTICAL_FLOW_PRESET_MEDIUM):

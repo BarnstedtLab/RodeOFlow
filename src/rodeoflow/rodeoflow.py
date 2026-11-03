@@ -1,38 +1,28 @@
 # -*- coding: utf-8 -*-
 """
-Author: @Jakob Faust
-Date: 15.10.2026
+Author: @Jakob Faust (15.10.2026)
+Modified by: @Lam Bui (03.11.2026)
 
-This file holds all main functions that are exposed to the user:
- - pose_body() : detects bodily keypoints
- - pose_body() : detects facial keypoints (used for mask generation in optical flow)
- - analyse_face() : analyses facial kinematics videos using optical flow
- - analyse_body() : analyses body/gait kinematics based on keypoint tracking results
+Main user functions for RodeOFlow.
+
+Face workflow:
+- pose_face(): detect facial keypoints used to define regions for optical-flow analysis.
+- analyse_face(): analyze facial motion using dense optical flow and extract face features.
+
+Body workflow:
+- pose_body(): detect body keypoints.
+- analyse_body(): analyze body keypoints and extract body-motion and stride-cycle gait features.
+
 """
 
 from pathlib import Path
 
-from mouseflow.face_processing import FaceAnalyzer
-from mouseflow.body_processing import BodyAnalyzer
-from mouseflow.keypoint_detector import KeypointDetector
-from mouseflow.utils.filehandler import get_files2analyse
+from rodeoflow.face_processing import FaceAnalyzer
+from rodeoflow.body_processing import BodyAnalyzer, StrideConfig
+from rodeoflow.keypoint_detector import KeypointDetector
+from rodeoflow.utils.filehandler import get_files2analyse
 
 
-def analyse_face(keypoint_dir, overwrite=False, opticalflow_engine='DIS', use_nmf_msks=True, save_vectorfields=False):
-    face_files = get_files2analyse(keypoint_dir=keypoint_dir, overwrite=overwrite, analysis_type='face')
-    if not face_files:
-        print(f"No face files found to process in {keypoint_dir}.")
-    face_analyzer = FaceAnalyzer(cfg=None, opticalflow_enigne=opticalflow_engine, save_vectorfield=save_vectorfields)
-    for current_file in face_files:
-        face_analyzer.analyse(current_file, landmark_dir=keypoint_dir, use_nmf_msks=use_nmf_msks)
-
-def analyse_body(keypoint_dir, overwrite=False):
-    body_files = get_files2analyse(keypoint_dir=keypoint_dir, overwrite=overwrite, analysis_type='body')
-    if not body_files:
-        print(f"No body files found to process in {keypoint_dir}.")
-    body_analyzer = BodyAnalyzer()
-    for current_file in body_files:
-        body_analyzer.analyse(current_file, keypoint_dir=keypoint_dir)
 
 def pose_face(video_dir, models_dir=None, keypoint_engine_face='DLC', filetype_face='mp4', 
               crop_box_face=None, face_facing='left', keypoint_model_weights_face=None, 
@@ -76,4 +66,19 @@ def pose_body(video_dir, models_dir=None, keypoint_engine_body='LP', filetype_bo
     # If body_videokey is a string, use it to filter files. If it's a boolean, process all.
     include_key = body_videokey if isinstance(body_videokey, str) else None
     kp_detector.detect_body_keypoints(video_dir, cfg=None, include_key=include_key)
-    
+
+def analyse_face(keypoint_dir, overwrite=False, opticalflow_engine='DIS', use_nmf_msks=True, save_vectorfields=False):
+    face_files = get_files2analyse(keypoint_dir=keypoint_dir, overwrite=overwrite, analysis_type='face')
+    if not face_files:
+        print(f"No face files found to process in {keypoint_dir}.")
+    face_analyzer = FaceAnalyzer(cfg=None, opticalflow_enigne=opticalflow_engine, save_vectorfield=save_vectorfields)
+    for current_file in face_files:
+        face_analyzer.analyse(current_file, landmark_dir=keypoint_dir, use_nmf_msks=use_nmf_msks)
+
+def analyse_body(keypoint_dir, overwrite=False,stride_cfg: StrideConfig | None = None):
+    body_files = get_files2analyse(keypoint_dir=keypoint_dir, overwrite=overwrite, analysis_type='body')
+    if not body_files:
+        print(f"No body files found to process in {keypoint_dir}.")
+    body_analyzer = BodyAnalyzer(cfg=stride_cfg, overwrite=overwrite)
+    for current_file in body_files:
+        body_analyzer.analyse(current_file, keypoint_dir=keypoint_dir)

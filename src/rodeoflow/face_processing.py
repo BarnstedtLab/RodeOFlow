@@ -1,14 +1,16 @@
 """
-Author: @Jakob Faust
-Date: 10.10.2026
+Author: @Jakob Faust (10.10.2026)
+Modified by: @Lam Bui (03.11.2026)
 
-Class to process face output from Dense Optical Flow.
-Also initiates Optical Flow calculations.
+Analyze facial videos using keypoint-derived masks and dense optical flow.
+Extract pupil and eyelid dynamics, blinks and saccades, nose and whiskerpad
+motion and frequency features, and chewing-related signals.
 """
 
 from pathlib import Path
+from scipy import signal
 import numpy as np
-from sklearn.decomposition import PCA 
+from sklearn.decomposition import PCA
 from tqdm import tqdm
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -16,12 +18,13 @@ import cv2
 import math
 import h5py
 from dataclasses import dataclass
+from scipy.ndimage import median_filter
 
 
-from mouseflow.utils import confidence_na, load_markers
-from mouseflow.optical_flow import BaseOF, FarnebackOF, DISFlowOF, DynamicMasks
-from mouseflow.utils.preprocess_video import get_video_for_marker, video_info
-from mouseflow.utils.motion_processing import smooth, freq_analysis2, dlc_pointdistance2, hilbert_peaks
+from rodeoflow.utils import confidence_na, load_markers
+from rodeoflow.optical_flow import BaseOF, FarnebackOF, DISFlowOF, DynamicMasks
+from rodeoflow.utils.preprocess_video import get_video_for_marker, video_info
+from rodeoflow.utils.motion_processing import smooth, freq_analysis2, dlc_pointdistance2, hilbert_peaks
 
 @dataclass(frozen=True)
 class FaceConfig:
@@ -61,7 +64,7 @@ class FaceAnalyzer():
                        base_resolution, manual_anchor)
 
     def _process_raw_data(self, smoothing_windows_sec, na_limit, FaceCam_FPS, interpolation_limits_frames, face_raw):
-        face_raw.iloc[:, (face_raw.isnull().mean()>na_limit).values] = np.nan  
+        face_raw.iloc[:, (face_raw.isnull().mean()>na_limit).values] = np.nan
 
         # Interpolate missing values
         face_interp = face_raw.copy()
@@ -82,13 +85,55 @@ class FaceAnalyzer():
                 face_smooth.loc[:, face_smooth.columns.str.startswith('MotionEnergy')].rolling(
                 window=smoothing_windows_frames['MotionEnergy'], center=True).mean().astype('float32')
 
-        # Z-scoring data
-        face_zscore = face_smooth.apply(lambda a: (a - a.mean())/a.std(ddof=0))
-
-        # adding binary data
-        face_zscore['Saccades'] = pd.Series(face_smooth['PupilX'].diff().abs() > 1.5).astype(int)
-        face_zscore['EyeBlink'] = pd.Series(face_interp['EyeLidDist'] < face_interp['EyeLidDist'].median()*.75).astype(int)
-
+        # Detect saccades from 2D pupil speed
+        pupil_x = median_filter(face_smooth["PupilX"].to_numpy(dtype=float), size=3)
+        pupil_y = median_filter(face_smooth["PupilY"].to_numpy(dtype=float), size=3)
+        vx = np.diff(pupil_x) * FaceCam_FPS
+        vy = np.diff(pupil_y) * FaceCam_FPS
+        speed_px_s = np.hypot(vx, vy)
+        # Estimate a fixed open-eye reference from the larger valid eyelid
+        # separations in this recording. Do not normalize frame by frame:
+        # eyelid separation changes during blinks.
+        lid_dist = face_interp["EyeLidDist"].to_numpy(dtype=float)
+        valid_lid_dist = lid_dist[np.isfinite(lid_dist) & (lid_dist > 0)]
+        if valid_lid_dist.size:
+            upper_lid_cutoff = np.quantile(valid_lid_dist, 0.80)
+            reference_lid_separation = np.median(valid_lid_dist[valid_lid_dist >= upper_lid_cutoff])
+        else:
+            reference_lid_separation = np.nan
+        if np.isfinite(reference_lid_separation) and reference_lid_separation > 0:
+            speed_normalized = speed_px_s / reference_lid_separation
+        else:
+            speed_normalized = np.full(speed_px_s.shape, np.nan)
+        # Align transition speeds to the frame where each transition ends.
+        speed_by_frame = np.full(len(face_smooth), np.nan)
+        speed_by_frame[1:] = speed_normalized
+        face_smooth["PupilSpeed_EyeOpeningPerSec"] = pd.Series(speed_by_frame, index=face_smooth.index)
+        # Z-score continuous signals. The normalized speed is also retained
+        # in face_smooth in its interpretable normalized units.
+        face_zscore = face_smooth.apply(lambda a: (a - a.mean()) / a.std(ddof=0))
+        # Adaptive saccade thresholds with hysteresis, applied to normalized speed.
+        is_saccade = np.zeros(len(speed_normalized), dtype=bool)
+        valid_speed = np.isfinite(speed_normalized)
+        if valid_speed.any():
+            mu = np.nanmean(speed_normalized)
+            sigma = np.nanstd(speed_normalized)
+            high_thr = mu + 1.5 * sigma
+            low_thr = mu + 1.0 * sigma
+            candidate_frames = np.flatnonzero(speed_normalized > high_thr)
+            for peak in candidate_frames:
+                start = peak
+                while start > 0 and speed_normalized[start] > low_thr:
+                    start -= 1
+                end = peak
+                while (end < len(speed_normalized) - 1 and speed_normalized[end] > low_thr):
+                    end += 1
+                is_saccade[start:end + 1] = True
+            is_saccade &= valid_speed
+        saccade_frames = np.zeros(len(face_smooth), dtype=int)
+        saccade_frames[1:] = is_saccade.astype(int)
+        face_zscore["Saccades"] = pd.Series(saccade_frames, index=face_smooth.index)
+        face_zscore["EyeBlink"] = pd.Series(face_interp["EyeLidDist"] < face_interp["EyeLidDist"].median() * 0.75,index=face_smooth.index,).astype(int)
         # Concatenating all data types into multi-level dataframe
         face = pd.concat({'raw': face_raw, 'interpolated': face_interp, 'smooth': face_smooth, 'zscore': face_zscore}, names=['Data_type'], axis=1)
 
@@ -118,9 +163,9 @@ class FaceAnalyzer():
         # extract pupil diameter
         pupil_diam_raw = pd.Series(pupil_circle[:, 1], dtype=np.float32)
 
-        return pd.DataFrame({'PupilX': pupil_x_raw, 
-                            'PupilY': pupil_y_raw, 
-                            'PupilMotion': pupil_xydist_raw, 
+        return pd.DataFrame({'PupilX': pupil_x_raw,
+                            'PupilY': pupil_y_raw,
+                            'PupilMotion': pupil_xydist_raw,
                             'PupilDiam': pupil_diam_raw})
 
     def _eyeblink(self, dlc_face, eyelid_conf_thresh=.999, eyelid_smooth_window=25, eyelid_interpolation_limit=150):
@@ -175,7 +220,7 @@ class FaceAnalyzer():
                                 dlc_face[anchor_name]['y'], alpha=.002)
                     plt.scatter(face_anchor[anchor_name]['x'],
                                 face_anchor[anchor_name]['y'])
-        face_anchor['eyelid_bottom'] = face_anchor['eyelid2'] # in DLC the keypoints are labeled with 1,2,3,etc., 
+        face_anchor['eyelid_bottom'] = face_anchor['eyelid2'] # in DLC the keypoints are labeled with 1,2,3,etc.,
         face_anchor = face_anchor.astype(float)               # ensure numeric
 
         # compute scaling if sizes provided
@@ -204,7 +249,7 @@ class FaceAnalyzer():
             cv2.ellipse(firstframe, centre, (sx, sy), angle, 0, 360, (255,0,0), 4)
             mask = cv2.ellipse(canvas.copy(), centre, (sx, sy), angle, 0, 360, (1,), -1)
             return mask.astype(bool)
-        
+
         def get_pt(name):
             arr = face_anchor.loc[['x','y'], name].values
             return None if np.isnan(arr).all() else arr
@@ -257,7 +302,7 @@ class FaceAnalyzer():
             mask_cheek = canvas.astype(bool)
         else:
             centre_cheek = tuple(np.round(eyelid_pt + (chin_pt - eyelid_pt)/2).astype(int))
-            dist = np.linalg.norm(chin_pt - eyelid_pt) 
+            dist = np.linalg.norm(chin_pt - eyelid_pt)
             axes = get_axes('cheek') or ((2.5/5)*dist, (1/4)*dist)
             mask_cheek = create_mask(centre_cheek, axes, angle=0)
         masks = [mask_nose, mask_whiskers, mask_mouth, mask_cheek]
@@ -272,7 +317,7 @@ class FaceAnalyzer():
         Tests if the installation has proper GPU support (and if a GPU is actually available).
         First check: OpenCV with CUDA support (needs to be compiled on machine!!)
         Second check: PyTorch with CUDA support
-        
+
         if 'Farneback' is specified as of_backend and there is no opencv CUDA installation,
         this will still return False even if it runs on a GPU system!!
         '''
@@ -295,7 +340,7 @@ class FaceAnalyzer():
         ret, frame = cap.read()
         if not ret:
             raise RuntimeError(f"Could not read video {videopath} for DynamicMasks")
-        
+
         height, width = frame.shape[:2]
         prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         cap.release()
@@ -307,8 +352,8 @@ class FaceAnalyzer():
             dyn_masks.set_masks(masks)
             dyn_masks.set_anchors(face_anchor)
             masks_sp, px_counts = dyn_masks.generate_updated_masks(prev_gray)
-            
-            # Convert sparse masks back to a list of dense 2D arrays 
+
+            # Convert sparse masks back to a list of dense 2D arrays
             dense_masks_flat = masks_sp.toarray()
             updated_masks = [m.reshape((height, width)).astype(np.float32) for m in dense_masks_flat]
             masks = updated_masks # Overwrite the original masks
@@ -320,32 +365,32 @@ class FaceAnalyzer():
         if self.opticalflow_enigne == 'FB':
             gpu_flow = FarnebackOF()
         elif self.opticalflow_enigne == 'DIS':
-            gpu_flow = DISFlowOF() 
+            gpu_flow = DISFlowOF()
         else:
             raise RuntimeError(f"Unexpected flow type {self.opticalflow_enigne}, expected 'DIS' or 'FB'.")
-        
+
         # Ensure the OF engine respects the FaceAnalyzer's setting!
         gpu_flow.save_vectors = self.save_vectorfield
-        
+
         if videoslice:
             start, end = videoslice[0], videoslice[1]
         else:
             start, end = 0, None
-            
-        gpu_flow.open(videopath, start=start, end=end) 
-        
+
+        gpu_flow.open(videopath, start=start, end=end)
+
         # Pass `masks`, NOT `updated_masks`, to avoid crashing if NMF is disabled
-        gpu_flow.set_masks(masks) 
-        out = gpu_flow.run()  
-        
+        gpu_flow.set_masks(masks)
+        out = gpu_flow.run()
+
         motion = np.hstack([out['diff'], out['mag'], out['ang']])
         cols = ['MotionEnergy_Nose','MotionEnergy_Whiskerpad','MotionEnergy_Mouth','MotionEnergy_Cheek',
                 'OFmag_Nose','OFmag_Whiskerpad','OFmag_Mouth','OFmag_Cheek',
                 'OFang_Nose','OFang_Whiskerpad','OFang_Mouth','OFang_Cheek']
-        
+
         df_statistics = pd.DataFrame(motion, columns=cols)
         flow_grid = out["flow_grid"] if self.save_vectorfield else None
-        
+
         return df_statistics, flow_grid
 
     def _to_h5(self, out_file: Path, face_masks, face_anchor: pd.DataFrame, face: pd.DataFrame):
@@ -356,8 +401,8 @@ class FaceAnalyzer():
                 out.create_dataset("facemasks", data=face_masks)
             face_anchor.to_hdf(mf_out_file, key="face_anchor", mode="a")
             face.to_hdf(mf_out_file, key="face", mode="a")
-            print(f"saved mouseflow face analysis to {mf_out_file}")
-    
+            print(f"saved rodeoflow face analysis to {mf_out_file}")
+
     def _interpolation_limits(self, fps: float, min_frames: int=1):
         out : dict[str, int] = {}
         for key, val in self.cfg.interpolation_limits_sec.items():
@@ -391,18 +436,73 @@ class FaceAnalyzer():
                     print('Main axis rotated to align with reference vector!')
         else:
             main_axis = axis
-            
+
         explained_var = pca.explained_variance_ratio_[0]
-        
+
         print(f"Main Axis of Motion: u={main_axis[0]:.2f}, v={main_axis[1]:.2f}")
         print(f"This axis explains {explained_var*100:.1f}% of all movement.")
 
         # Project data onto the final axis
-        projection = u * main_axis[0] + v * main_axis[1] 
+        projection = u * main_axis[0] + v * main_axis[1]
         return projection, main_axis
+    @staticmethod
+    def _windowed_spectral_metric(x,fps,metric,fmin,fmax,window_sec=3.0,):
+        """Estimate a dominant spectral peak or spectral centroid per window."""
+        if metric not in {"peak", "centroid"}:
+            raise ValueError("metric must be 'peak' or 'centroid'")
+        if fps <= 0:
+            raise ValueError("fps must be positive")
+        series = x if isinstance(x, pd.Series) else pd.Series(x)
+        values = series.to_numpy(dtype=float)
+        window_len = int(round(window_sec * fps))
+        output = np.full(len(values), np.nan)
+        if window_len < 3:
+            return pd.Series(output, index=series.index)
+        for start in range(0, len(values) - window_len + 1, window_len):
+            stop = start + window_len
+            segment = values[start:stop]
+            finite = np.isfinite(segment)
+            # Skip windows with too much missing tracking data.
+            if finite.mean() < 0.8:
+                continue
+            segment = (pd.Series(segment).interpolate(limit_direction="both").to_numpy(dtype=float))
+            nfft = max(1024, 1 << (len(segment) - 1).bit_length())
+            frequencies, power = signal.welch(segment,fs=fps,window="hann",nperseg=len(segment),noverlap=0,nfft=nfft,detrend="constant",scaling="density",)
+            band = (frequencies >= fmin) & (frequencies <= fmax)
+            band_freq = frequencies[band]
+            band_power = power[band]
+            if len(band_freq) == 0 or not np.isfinite(band_power).all():
+                continue
+            if metric == "peak":
+                estimate = band_freq[np.argmax(band_power)]
+            else:
+                total_power = np.trapz(band_power, band_freq)
+                if total_power <= 0:
+                    continue
+                estimate = np.trapz(band_freq * band_power, band_freq) / total_power
+            output[start:stop] = estimate
+        return pd.Series(output, index=series.index)
+
+
+    @staticmethod
+    def _hilbert_peaks(x, fps, fc=None, butterN=5, peakprom=1.5):
+        """Return the filtered Hilbert envelope and binary mouth-event peaks."""
+        series = x if isinstance(x, pd.Series) else pd.Series(x)
+        values = series.to_numpy(dtype=float)
+        env = np.abs(signal.hilbert(values))
+        nyquist = fps / 2.0
+        fc_used = nyquist * 0.5 if fc is None or fc >= nyquist else fc
+        b, a = signal.butter(butterN, fc_used / nyquist, "low")
+        shift_amt = int(0.6 * fps)
+        envelope = pd.Series(signal.filtfilt(b, a, env),index=series.index,).shift(shift_amt)
+        peaks, _ = signal.find_peaks(envelope.to_numpy(), prominence=peakprom)
+        peak_flags = np.zeros(len(values), dtype=int)
+        peak_flags[peaks] = 1
+
+        return envelope, pd.Series(peak_flags, index=series.index)
 
     def analyse(self, face_file: Path, landmark_dir: Path, use_nmf_msks=True):
-        out_file = face_file.with_name(face_file.stem + '_mouseflow.h5')
+        out_file = face_file.with_name(face_file.stem + '_rodeoflow.h5')
         out_grid = face_file.with_name(face_file.stem + '_optical_flow_grid.npz')
         if out_file.exists() and not getattr(self, 'overwrite', False):
             print(f"{out_file} already analysed, skipping ahead...")
@@ -433,13 +533,13 @@ class FaceAnalyzer():
         if not self._has_gpu_support():
             self.opticalflow_enigne = 'DIS'
             print("No CUDA support detected. Processing with DIS optical flow on your CPU...")
-            face_motion, flow_grid = self._facemotion(
-                video_file, face_masks, face_anchor, use_nmf_msks=use_nmf_msks)
-            
+        face_motion, flow_grid = self._facemotion(
+            video_file, face_masks, face_anchor, use_nmf_msks=use_nmf_msks)
+
         # Perform PCA on Nose (Reference: Downwards, positive Y)
         nose_pca_proj, _ = self._perform_pca(
-            face_motion['OFang_Nose'].values, 
-            face_motion['OFmag_Nose'].values, 
+            face_motion['OFang_Nose'].values,
+            face_motion['OFmag_Nose'].values,
             reference_vector=np.array([0.0, 1.0])
         )
         face_motion['Projection_Nose'] = nose_pca_proj
@@ -447,27 +547,23 @@ class FaceAnalyzer():
         # Perform PCA on Whiskerpad (Reference: Towards Nosetip)
         nose_pt = face_anchor.loc[['x', 'y'], 'nosetip'].values
         whisker_pt = face_anchor.loc[['x', 'y'], 'whiskerpad_center'].values
-        
+
         if not np.isnan(nose_pt.astype(float)).any() and not np.isnan(whisker_pt.astype(float)).any():
             ref_whisker = nose_pt - whisker_pt
         else:
             ref_whisker = np.array([1.0, 0.0]) # Fallback if points are missing
-            
+
         whisker_pca_proj, _ = self._perform_pca(
-            face_motion['OFang_Whiskerpad'].values, 
-            face_motion['OFmag_Whiskerpad'].values, 
+            face_motion['OFang_Whiskerpad'].values,
+            face_motion['OFmag_Whiskerpad'].values,
             reference_vector=ref_whisker
         )
         face_motion['Projection_Whiskerpad'] = whisker_pca_proj
 
-        whisk_freq = freq_analysis2(
-            face_motion['OFang_Whiskerpad'], fps, rollwin=fps, min_periods=int(fps*.67))
-        sniff_freq = freq_analysis2(
-            face_motion['OFang_Nose'],       fps, rollwin=fps, min_periods=int(fps*.67))
-        chewenv, chew = hilbert_peaks(
-            face_motion['OFang_Mouth'],    fps)
-        face_freq = pd.DataFrame(
-            {'Whisking_freq': whisk_freq, 'Sniff_freq': sniff_freq, 'Chewing_Envelope': chewenv, 'Chew': chew})
+        nose_freq = self._windowed_spectral_metric(face_motion["Projection_Nose"],fps,metric="peak",fmin=2,fmax=15,)
+        whiskerpad_centroid = self._windowed_spectral_metric(face_motion["Projection_Whiskerpad"],fps,metric="centroid",fmin=2,fmax=29,)
+        chewenv, chew = self._hilbert_peaks(face_motion["OFang_Mouth"],fps,)
+        face_freq = pd.DataFrame({"Nose_DominantFrequency_Hz": nose_freq,"Whiskerpad_SpectralCentroid_Hz": whiskerpad_centroid, "Chewing_Envelope": chewenv,"Chew": chew,})
         face_raw = pd.concat([pupil_raw, eyelid_dist_raw, face_motion, face_freq], axis=1)
 
         cap.release()

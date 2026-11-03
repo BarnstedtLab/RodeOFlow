@@ -18,9 +18,9 @@ def get_files2analyse(keypoint_dir, overwrite, analysis_type):
     all_files = sorted(d.glob(f'*DLC*Mouse{analysis_type}*.h5'))
 
     def needs_processing(p: Path) -> bool:
-        if p.name.lower().endswith("_mouseflow.h5"):
+        if p.name.lower().endswith("_rodeoflow.h5"):
             return False
-        mf = p.with_name(p.stem + '_mouseflow.h5')
+        mf = p.with_name(p.stem + '_rodeoflow.h5')
         if mf.exists() and not overwrite:
             print(f"skipping file {p.name} as it is already analysed!") 
         return overwrite or not mf.exists()

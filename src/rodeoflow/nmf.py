@@ -410,7 +410,7 @@ class NMFBuilder:
 
         ax_all.axis('off')
         video_path = Path(video_path)
-        out_dir = video_path.parent / 'mouseflow'
+        out_dir = video_path.parent / 'rodeoflow'
         out_dir.mkdir(parents=True, exist_ok=True)
         
         # Save as a high-resolution PNG
