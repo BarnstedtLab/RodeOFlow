@@ -34,7 +34,7 @@ class KeypointDetector():
         self.overwrite = overwrite
         self.save_labled_videos = save_labled_videos
         if self.models_dir is None:
-            self.models_dir = Path.cwd() / "mf_models"
+            self.models_dir = Path.cwd() / "rodeoflow_models"
                     
         self.model_paths = download_models(self.models_dir)
 

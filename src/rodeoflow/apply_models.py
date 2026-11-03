@@ -37,13 +37,13 @@ def download_models(models_dir):
 
         with zipfile.ZipFile(download_file) as mf_models:
             print(f"Unzipping models to {models_dir.parent}...")
-            # Extract to parent directory so 'mf_models/' inside zip lands at 'models_dir'
+            # Extract to parent directory so 'rodeoflow_models/' inside zip lands at 'models_dir'
             mf_models.extractall(models_dir.parent)
 
         if download_file.exists():
             download_file.unlink()
 
-        nested_dir = models_dir / "mf_models"
+        nested_dir = models_dir / "rodeoflow_models"
         if nested_dir.exists():
             for item in nested_dir.iterdir():
                 shutil.move(str(item), str(models_dir))
