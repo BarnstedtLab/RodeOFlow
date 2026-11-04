@@ -4,7 +4,7 @@ API reference
 Pose estimation
 ---------------
 
-.. py:function:: pose_face(video_dir, models_dir=None, keypoint_engine_face='DLC', filetype_face='mp4', crop_box_face=None, face_facing='left', keypoint_model_weights_face=None, overwrite=False, save_labled_videos=True, face_videokey=None)
+.. py:function:: pose_face(video_dir, models_dir=None, keypoint_engine_face='DLC', filetype_face='mp4', crop_box_face=None, face_facing='left', keypoint_model_weights_face=None, overwrite=False, save_labeled_videos=True, face_videokey=None)
 
    Detect facial landmarks in videos.
 
@@ -16,10 +16,10 @@ Pose estimation
    :param face_facing: Face orientation. Defaults to ``'left'``.
    :param keypoint_model_weights_face: Optional path to face model weights.
    :param overwrite: Whether to overwrite existing keypoint outputs.
-   :param save_labled_videos: Whether to save videos with the detected landmarks drawn on them.
+   :param save_labeled_videos: Whether to save videos with the detected landmarks drawn on them.
    :param face_videokey: Optional string used to select videos whose filenames contain that string.
 
-.. py:function:: pose_body(video_dir, models_dir=None, keypoint_engine_body='LP', filetype_body='mp4', crop_box_body=None, body_facing='right', keypoint_model_weights_body=None, overwrite=False, save_labled_videos=True, body_videokey=None)
+.. py:function:: pose_body(video_dir, models_dir=None, keypoint_engine_body='LP', filetype_body='mp4', crop_box_body=None, body_facing='right', keypoint_model_weights_body=None, overwrite=False, save_labeled_videos=True, body_videokey=None)
 
    Detect body keypoints in videos.
 
@@ -31,7 +31,7 @@ Pose estimation
    :param body_facing: Body orientation. Defaults to ``'right'``.
    :param keypoint_model_weights_body: Optional path to body model weights.
    :param overwrite: Whether to overwrite existing keypoint outputs.
-   :param save_labled_videos: Whether to save videos with the detected keypoints drawn on them.
+   :param save_labeled_videos: Whether to save videos with the detected keypoints drawn on them.
    :param body_videokey: Optional string used to select videos whose filenames contain that string.
 
 Analysis
