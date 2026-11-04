@@ -18,33 +18,49 @@ from torch.cuda.amp import autocast
 import cv2
 import pandas as pd
 from ruamel.yaml import YAML
-
+import urllib.request
+import zipfile
+import shutil
 
 def download_models(models_dir):
-    import owncloud
-    import zipfile
     models_dir = Path(models_dir)
-    download_file = str(models_dir) + ".zip"
-    if not models_dir.exists():
-        print("downloading models...")
-        oc = owncloud.Client.from_public_link("https://owncloud.gwdg.de/index.php/s/mmabZJAw9yTKcvG",folder_password="")
-        oc.get_file("/mf_models.zip", download_file)
+    download_file = models_dir.with_suffix(".zip")
+    expected_cfg = models_dir / "face" / "dlc" / "project_config.yaml"
+
+    if not expected_cfg.exists():
+        if models_dir.exists():
+            shutil.rmtree(models_dir)
+
+        print("Downloading models...")
+        nextcloud_url = "https://umg.files.academiccloud.de/s/F2BAgZM4SBDJBtn/download"
+        urllib.request.urlretrieve(nextcloud_url, download_file)
+
         with zipfile.ZipFile(download_file) as mf_models:
-            print(f"unzipping to {str(models_dir)}...")
-            mf_models.extractall(str(models_dir))
+            print(f"Unzipping models to {models_dir.parent}...")
+            # Extract to parent directory so 'rodeoflow_models/' inside zip lands at 'models_dir'
+            mf_models.extractall(models_dir.parent)
+
+        if download_file.exists():
+            download_file.unlink()
+
+        nested_dir = models_dir / "rodeoflow_models"
+        if nested_dir.exists():
+            for item in nested_dir.iterdir():
+                shutil.move(str(item), str(models_dir))
+            nested_dir.rmdir()
+
         print("...done")
-    
-    # PyTorch config (DLC 3)
-    cfg_body_dlc = models_dir / "body/dlc" / "project_config.yaml"
-    model_body_dlc = models_dir / "body/dlc" / "dlc-models-pytorch/iteration-1/MouseBodySep9-trainset95shuffle3/train/snapshot-best-260.pt"
-    cfg_body_lp = models_dir / "body/lp" / "config.yaml"
-    model_body_lp = models_dir / "body/lp" / "epoch=79-step=20000-best.ckpt"
-    
-    cfg_face_dlc = models_dir / "face/dlc" / "project_config.yaml"
-    model_face_dlc = models_dir / "face/dlc" / "dlc-models-pytorch/iteration-0/MouseFaceAug21-trainset95shuffle2/train/snapshot-best-170.pt"
-    
-    return dict(cfg_body_dlc=cfg_body_dlc, model_body_dlc=model_body_dlc, cfg_body_lp=cfg_body_lp, model_body_lp=model_body_lp, cfg_face_dlc=cfg_face_dlc,
-                model_face_dlc=model_face_dlc)
+
+    # Return model paths
+    return dict(
+        cfg_body_dlc = models_dir / "body/dlc/project_config.yaml",
+        model_body_dlc = models_dir / "body/dlc/dlc-models-pytorch/iteration-1/MouseBodySep9-trainset95shuffle3/train/snapshot-best-260.pt",
+        cfg_body_lp = models_dir / "body/lp/config.yaml",
+        model_body_lp = models_dir / "body/lp/epoch=79-step=20000-best.ckpt",
+        cfg_face_dlc = models_dir / "face/dlc/project_config.yaml",
+        model_face_dlc = models_dir / "face/dlc/dlc-models-pytorch/iteration-0/MouseFaceAug21-trainset95shuffle2/train/snapshot-best-170.pt",
+    )
+
 
 def detect_engine(cfg_path):
     """
@@ -170,21 +186,38 @@ class DLCDetector(KeypointEngine):
         Minimal labeled video writer for DLC single-animal outputs.
         - video_path: path to the original video
         - h5_path: DLC predictions (.h5) with MultiIndex columns (scorer, bodypart, coord)
-        - pose_cfg_path: test/pose_cfg.yaml containing metadata.bodyparts
+        - pose_cfg_path: test/pose_cfg.yaml containing metadata or joint names
         - out_path: output mp4 path (defaults to <video_basename>_labeled.mp4 next to input)
         - pcutoff: confidence threshold for drawing
         """
-        # load bodyparts from pose config
-        yaml = YAML(typ="safe")
-        pose_cfg = yaml.load(open(pose_cfg_path, "r"))
-        bodyparts = pose_cfg.get("metadata", {}).get("bodyparts", [])
-        if not bodyparts:
-            raise ValueError("No bodyparts found in pose_cfg.yaml under metadata.bodyparts.")
-
-        # load predictions
+        # load predictions first
         df = pd.read_hdf(h5_path)
         if not isinstance(df.columns, pd.MultiIndex) or df.columns.nlevels < 3:
             raise ValueError("Unexpected H5 columns. Expect MultiIndex (scorer, bodypart, coord).")
+
+        # load bodyparts from pose config with multi-key fallbacks
+        bodyparts = []
+        if os.path.exists(pose_cfg_path):
+            try:
+                yaml_loader = YAML(typ="safe")
+                with open(pose_cfg_path, "r") as f:
+                    pose_cfg = yaml_loader.load(f) or {}
+            except Exception:
+                pose_cfg = {}
+                
+            bodyparts = (
+                pose_cfg.get("metadata", {}).get("bodyparts")
+                or pose_cfg.get("bodyparts")
+                or pose_cfg.get("all_joints_names")
+                or []
+            )
+
+        # Fallback: extract unique bodypart names directly from HDF5 MultiIndex columns
+        if not bodyparts:
+            bodyparts = df.columns.get_level_values(1).unique().tolist()
+
+        if not bodyparts:
+            raise ValueError("Could not extract bodyparts list from pose_cfg.yaml or HDF5 output file.")
 
         # map: bodypart -> (x_col, y_col, l_col)
         # pick the first scorer layer present
@@ -241,8 +274,8 @@ class DLCDetector(KeypointEngine):
         # simple deterministic colors per bodypart
         def bp_color(i, total):
             hue = int(179 * i / max(1, total))
-            col = cv2.cvtColor(np.uint8([[[hue, 200, 255]]]), cv2.COLOR_HSV2BGR)[0, 0, :]
-            return int(col[0]), int(col[1]), int(col[2])
+            col_bgr = cv2.cvtColor(np.uint8([[[hue, 200, 255]]]), cv2.COLOR_HSV2BGR)[0, 0, :]
+            return int(col_bgr[0]), int(col_bgr[1]), int(col_bgr[2])
 
         colors = {bp: bp_color(i, len(triplets)) for i, (bp, *_cols) in enumerate(triplets)}
 
