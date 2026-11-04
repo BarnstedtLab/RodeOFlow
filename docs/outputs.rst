@@ -1,13 +1,13 @@
 Outputs
 =======
 
-RodeOFlow creates pose-estimation files and analysis files. The available
+RodeOFlow creates pose estimation files and analysis files. The available
 features depend on the tracking engine, video, and analysis options.
 
 Output files
 ------------
 
-When a pose-estimation function receives a video directory, it saves keypoint
+When a pose estimation function receives a video directory, it saves keypoint
 outputs in a ``rodeoflow`` subdirectory. The file format can depend on the
 tracking engine.
 
@@ -24,12 +24,12 @@ framewise measurements of facial movement.
 Regional motion
 ^^^^^^^^^^^^^^^
 
-Optical-flow measurements describe image motion within facial regions. Depending
+Dense optical flow measurements describe image motion within facial regions. Depending
 on the analysis, the output includes:
 
-* Regional motion-energy signals (``MotionEnergy_*``).
-* Optical-flow magnitude signals (``OFmag_*``).
-* Optical-flow angle signals (``OFang_*``).
+* Regional motion energy signals (``MotionEnergy_*``).
+* Dense optical flow magnitude signals (``OFmag_*``).
+* Dense optical flow angle signals (``OFang_*``).
 * Signed motion projections for the nose (``Projection_Nose``) and whisker pad
   (``Projection_Whiskerpad``).
 
@@ -39,14 +39,14 @@ of muscle force or movement in physical units.
 Eye and pupil features
 ^^^^^^^^^^^^^^^^^^^^^^
 
-Face analysis also extracts pupil and eye-related measurements, including
+Face analysis also extracts pupil and eye related measurements, including
 pupil diameter and position, eye opening, and pupil movement. The output can
-include blink and saccade-related measures.
+include blink and saccade related measures.
 
 Frequency and chewing features
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The analysis can include frequency-related features derived from the nasal and
+The analysis can include frequency related features derived from the nasal and
 whisker-pad motion signals, such as ``Nose_DominantFrequency_Hz`` and
 ``Whiskerpad_SpectralCentroid_Hz``. Chewing-related outputs include
 ``Chewing_Envelope`` and ``Chew``.
