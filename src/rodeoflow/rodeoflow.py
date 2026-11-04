@@ -26,14 +26,14 @@ from rodeoflow.utils.filehandler import get_files2analyse
 
 def pose_face(video_dir, models_dir=None, keypoint_engine_face='DLC', filetype_face='mp4', 
               crop_box_face=None, face_facing='left', keypoint_model_weights_face=None, 
-              overwrite=False, save_labled_videos=True, face_videokey=None):
+              overwrite=False, save_labeled_videos=True, face_videokey=None):
     """Detects facial landmarks in the specified videos."""
     
     kp_detector = KeypointDetector(
         keypoint_engine_face=keypoint_engine_face, filetype_face=filetype_face, 
         crop_box_face=crop_box_face, flip_input_face=(face_facing!='left'), 
         keypoint_model_weights_face=keypoint_model_weights_face, models_dir=models_dir,
-        overwrite=overwrite, save_labled_videos=save_labled_videos,
+        overwrite=overwrite, save_labeled_videos=save_labeled_videos,
         # Default body arguments to satisfy KeypointDetector's __init__
         keypoint_engine_body='LP', filetype_body='mp4', crop_box_body=None, 
         flip_input_body=False, keypoint_model_weights_body=None
@@ -48,14 +48,14 @@ def pose_face(video_dir, models_dir=None, keypoint_engine_face='DLC', filetype_f
 
 def pose_body(video_dir, models_dir=None, keypoint_engine_body='LP', filetype_body='mp4', 
               crop_box_body=None, body_facing='right', keypoint_model_weights_body=None, 
-              overwrite=False, save_labled_videos=True, body_videokey=None):
+              overwrite=False, save_labeled_videos=True, body_videokey=None):
     """Detects body keypoints in the specified videos."""
     
     kp_detector = KeypointDetector(
         keypoint_engine_body=keypoint_engine_body, filetype_body=filetype_body, 
         crop_box_body=crop_box_body, flip_input_body=(body_facing!='right'), 
         keypoint_model_weights_body=keypoint_model_weights_body, models_dir=models_dir,
-        overwrite=overwrite, save_labled_videos=save_labled_videos,
+        overwrite=overwrite, save_labeled_videos=save_labeled_videos,
         # Default face arguments to satisfy KeypointDetector's __init__
         keypoint_engine_face='DLC', filetype_face='mp4', crop_box_face=None, 
         flip_input_face=False, keypoint_model_weights_face=None

@@ -561,10 +561,12 @@ class FaceAnalyzer():
         )
         face_motion['Projection_Whiskerpad'] = whisker_pca_proj
 
-        nose_freq = self._windowed_spectral_metric(face_motion["Projection_Nose"],fps,metric="peak",fmin=2,fmax=15,)
-        whiskerpad_centroid = self._windowed_spectral_metric(face_motion["Projection_Whiskerpad"],fps,metric="centroid",fmin=2,fmax=29,)
+        nose_peak = self._windowed_spectral_metric(face_motion["Projection_Nose"], fps,metric="peak", fmin=2, fmax=15,)
+        nose_centroid = self._windowed_spectral_metric(face_motion["Projection_Nose"], fps,metric="centroid", fmin=2, fmax=15,)
+        whiskerpad_peak = self._windowed_spectral_metric(face_motion["Projection_Whiskerpad"], fps,metric="peak", fmin=2, fmax=29,)
+        whiskerpad_centroid = self._windowed_spectral_metric(face_motion["Projection_Whiskerpad"], fps,metric="centroid", fmin=2, fmax=29,)
         chewenv, chew = self._hilbert_peaks(face_motion["OFang_Mouth"],fps,)
-        face_freq = pd.DataFrame({"Nose_DominantFrequency_Hz": nose_freq,"Whiskerpad_SpectralCentroid_Hz": whiskerpad_centroid, "Chewing_Envelope": chewenv,"Chew": chew,})
+        face_freq = pd.DataFrame({"Nose_DominantFrequency_Hz": nose_peak,"Nose_SpectralCentroid_Hz": nose_centroid,"Whiskerpad_DominantFrequency_Hz": whiskerpad_peak,"Whiskerpad_SpectralCentroid_Hz": whiskerpad_centroid, "Chewing_Envelope": chewenv,"Chew": chew,})
         face_raw = pd.concat([pupil_raw, eyelid_dist_raw, face_motion, face_freq], axis=1)
 
         cap.release()
