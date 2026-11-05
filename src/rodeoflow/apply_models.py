@@ -137,13 +137,14 @@ class LPDetector(KeypointEngine):
         video_file: str,
         out_dir: str,
         make_labeled_video: bool = False,
-        overwrite: bool = False):
+        overwrite: bool = False,
+        prediction_suffix: str = ""):
         from lightning_pose.utils.predictions import export_predictions_and_labeled_video
 
         out_path = Path(out_dir)
         if not out_path.exists():
             out_path.mkdir(exist_ok=True, parents=True)
-        base = os.path.splitext(os.path.basename(video_file))[0]
+        base = os.path.splitext(os.path.basename(video_file))[0] + prediction_suffix
         preds_csv = out_path / f"{base}.csv"
         labeled_mp4 = out_path.parent /  f"{base}_labeled.mp4" if make_labeled_video else None
 
