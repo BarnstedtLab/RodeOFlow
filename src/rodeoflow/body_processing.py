@@ -177,7 +177,11 @@ class BodyAnalyzer:
         temporary = values.interpolate(limit_direction="both").ffill().bfill()
         if temporary.isna().all():
             return pd.Series(np.nan, index=point.index, dtype=float)
-        cleaned = pd.Series(smooth(temporary.to_numpy(), window_len=window_len),index=point.index,dtype=float,)
+        smoothed = smooth(temporary.to_numpy(), window_len=window_len)
+        extra = len(smoothed) - len(temporary)
+        left = extra // 2
+        smoothed = smoothed[left:left + len(temporary)]
+        cleaned = pd.Series(smoothed, index=point.index, dtype=float)
         cleaned.loc[~valid] = np.nan
         return cleaned
 
@@ -405,6 +409,7 @@ class BodyAnalyzer:
         stride_cycles = (pd.concat(stride_tables, ignore_index=True) if stride_tables else pd.DataFrame())
         stride_cycles = stride_cycles.reindex(columns=STRIDE_CYCLE_COLUMNS)
         processing_summary = pd.DataFrame(processing_rows)
+        if "bout_id" in stride_cycles.columns: stride_cycles["bout_id"] = stride_cycles["bout_id"].astype("float64")
         stride_cycles.to_hdf(out_file, key="stride_cycles", mode="a")
         processing_summary.to_hdf(out_file, key="processing_summary", mode="a")
         # further process raw data and save
