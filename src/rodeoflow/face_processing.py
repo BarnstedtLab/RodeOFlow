@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import cv2
 import math
 import h5py
+import time
 from dataclasses import dataclass
 from scipy.ndimage import median_filter
 
@@ -37,14 +38,15 @@ class FaceConfig:
     manual_anchor: dict | None = None
 
 class FaceAnalyzer():
-    def __init__(self, cfg:FaceConfig=None, opticalflow_enigne:str='DIS', save_vectorfield: bool=False):
+    def __init__(self, cfg:FaceConfig=None, opticalflow_enigne:str='DIS', save_vectorfield: bool=False, downsampling_factor:int=1):
         self.opticalflow_enigne = opticalflow_enigne
         self.save_vectorfield = save_vectorfield
+        self.downsampling_factor = downsampling_factor
 
         if cfg:
             self.cfg = cfg
         else:
-            conf_thresh = None
+            conf_thresh = 0.5
             interpolation_limits_sec={
                 'pupil': 2,
                 'eyelid': 1,
@@ -333,7 +335,7 @@ class FaceAnalyzer():
 
         return False # safe fallback
 
-    def _facemotion(self, videopath, masks, face_anchor, videoslice=[], use_nmf_msks=True):
+    def _facemotion(self, videopath, masks, face_anchor, videoslice=[], use_nmf_masks=True):
         cap = cv2.VideoCapture(str(videopath))
         if videoslice:
             cap.set(cv2.CAP_PROP_POS_FRAMES, videoslice[0])
@@ -346,16 +348,20 @@ class FaceAnalyzer():
         cap.release()
 
         # Generate NMF masks
-        if use_nmf_msks:
+        if use_nmf_masks:
             print("Generating dynamic masks via NMF...")
             dyn_masks = DynamicMasks(str(videopath), width, height)
             dyn_masks.set_masks(masks)
             dyn_masks.set_anchors(face_anchor)
             masks_sp, px_counts = dyn_masks.generate_updated_masks(prev_gray)
-
-            # Convert sparse masks back to a list of dense 2D arrays
+            
+            # Convert sparse masks back to a list of dense 2D arrays 
             dense_masks_flat = masks_sp.toarray()
-            updated_masks = [m.reshape((height, width)).astype(np.float32) for m in dense_masks_flat]
+            updated_masks = []
+            for m in dense_masks_flat:
+                # Reshape and ensure mask matches (height, width) orientation
+                mask_2d = m.reshape((height, width), order='C').astype(np.float32)
+                updated_masks.append(mask_2d)
             masks = updated_masks # Overwrite the original masks
         else:
             print("Continuing without NMF masks")
@@ -363,13 +369,12 @@ class FaceAnalyzer():
         # Initialize and run the Optical Flow
         gpu_flow : BaseOF = None
         if self.opticalflow_enigne == 'FB':
-            gpu_flow = FarnebackOF()
+            gpu_flow = FarnebackOF(downsample_factor=self.downsampling_factor)
         elif self.opticalflow_enigne == 'DIS':
-            gpu_flow = DISFlowOF()
+            gpu_flow = DISFlowOF(downsample_factor=self.downsampling_factor)
         else:
             raise RuntimeError(f"Unexpected flow type {self.opticalflow_enigne}, expected 'DIS' or 'FB'.")
 
-        # Ensure the OF engine respects the FaceAnalyzer's setting!
         gpu_flow.save_vectors = self.save_vectorfield
 
         if videoslice:
@@ -378,10 +383,11 @@ class FaceAnalyzer():
             start, end = 0, None
 
         gpu_flow.open(videopath, start=start, end=end)
-
-        # Pass `masks`, NOT `updated_masks`, to avoid crashing if NMF is disabled
         gpu_flow.set_masks(masks)
+
+        of_start_time = time.perf_counter()
         out = gpu_flow.run()
+        of_runtime = time.perf_counter() - of_start_time
 
         motion = np.hstack([out['diff'], out['mag'], out['ang']])
         cols = ['MotionEnergy_Nose','MotionEnergy_Whiskerpad','MotionEnergy_Mouth','MotionEnergy_Cheek',
@@ -390,6 +396,12 @@ class FaceAnalyzer():
 
         df_statistics = pd.DataFrame(motion, columns=cols)
         flow_grid = out["flow_grid"] if self.save_vectorfield else None
+
+        num_frames = len(df_statistics) 
+        of_throughput_fps = num_frames / of_runtime if of_runtime > 0 else 0.0
+        print(f"Optical Flow Runtime:     {of_runtime:.4f} s")
+        print(f"Total Frames Processed:   {num_frames}")
+        print(f"Optical Flow Throughput:  {of_throughput_fps:.2f} FPS")
 
         return df_statistics, flow_grid
 
@@ -501,10 +513,10 @@ class FaceAnalyzer():
 
         return envelope, pd.Series(peak_flags, index=series.index)
 
-    def analyse(self, face_file: Path, landmark_dir: Path, use_nmf_msks=True):
+    def analyse(self, face_file: Path, landmark_dir: Path, overwrite=False, use_nmf_masks=True):
         out_file = face_file.with_name(face_file.stem + '_rodeoflow.h5')
         out_grid = face_file.with_name(face_file.stem + '_optical_flow_grid.npz')
-        if out_file.exists() and not getattr(self, 'overwrite', False):
+        if out_file.exists() and not overwrite:
             print(f"{out_file} already analysed, skipping ahead...")
             return
         markers_face = load_markers(face_file, key=None)
@@ -534,7 +546,7 @@ class FaceAnalyzer():
             self.opticalflow_enigne = 'DIS'
             print("No CUDA support detected. Processing with DIS optical flow on your CPU...")
         face_motion, flow_grid = self._facemotion(
-            video_file, face_masks, face_anchor, use_nmf_msks=use_nmf_msks)
+            video_file, face_masks, face_anchor, use_nmf_masks=use_nmf_masks)
 
         # Perform PCA on Nose (Reference: Downwards, positive Y)
         nose_pca_proj, _ = self._perform_pca(

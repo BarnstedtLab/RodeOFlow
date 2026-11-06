@@ -67,15 +67,15 @@ def pose_body(video_dir, models_dir=None, keypoint_engine_body='LP', filetype_bo
     include_key = body_videokey if isinstance(body_videokey, str) else None
     kp_detector.detect_body_keypoints(video_dir, cfg=None, include_key=include_key)
 
-def analyse_face(keypoint_dir, overwrite=False, opticalflow_engine='DIS', use_nmf_msks=True, save_vectorfields=False):
+def analyse_face(keypoint_dir, overwrite=False, opticalflow_engine='DIS', use_nmf_masks=True, save_vectorfields=False, downsampling_factor=1):
     face_files = get_files2analyse(keypoint_dir=keypoint_dir, overwrite=overwrite, analysis_type='face')
     if not face_files:
         print(f"No face files found to process in {keypoint_dir}.")
-    face_analyzer = FaceAnalyzer(cfg=None, opticalflow_enigne=opticalflow_engine, save_vectorfield=save_vectorfields)
+    face_analyzer = FaceAnalyzer(cfg=None, opticalflow_enigne=opticalflow_engine, save_vectorfield=save_vectorfields, downsampling_factor=downsampling_factor)
     for current_file in face_files:
-        face_analyzer.analyse(current_file, landmark_dir=keypoint_dir, use_nmf_msks=use_nmf_msks)
+        face_analyzer.analyse(current_file, landmark_dir=keypoint_dir, overwrite=overwrite, use_nmf_masks=use_nmf_masks)
 
-def analyse_body(keypoint_dir, overwrite=False,stride_cfg: StrideConfig | None = None):
+def analyse_body(keypoint_dir, overwrite=False, stride_cfg: StrideConfig | None = None):
     body_files = get_files2analyse(keypoint_dir=keypoint_dir, overwrite=overwrite, analysis_type='body')
     if not body_files:
         print(f"No body files found to process in {keypoint_dir}.")
