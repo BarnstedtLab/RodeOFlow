@@ -1,9 +1,8 @@
-
 name: rodeoflow
 channels:
+  - pytorch
   - conda-forge
   - defaults
-
 dependencies:
   - python=3.10
   - numpy=1.26.4
@@ -12,16 +11,14 @@ dependencies:
   - ffmpeg
   - scipy
   - pandas
+  - pytorch::pytorch
+  - pytorch::torchvision
+  - pytorch::torchaudio
   - pip
-
   - pip:
-      - torch
-      - torchvision
-      - torchaudio
       - transformers<4.44
       - pyocclient
-
-      # Lightning Pose dependencies
+      # Lightning Pose
       - fiftyone
       - hydra-core
       - omegaconf
@@ -31,7 +28,3 @@ dependencies:
       - lightning
       - matplotlib
       - moviepy==1.0.3
-
-      # DeepLabCut
-      # Install separately if needed:
-      # pip install --pre deeplabcut
