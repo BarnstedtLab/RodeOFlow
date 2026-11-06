@@ -1,5 +1,5 @@
 
-name: rodeoflow_mac
+name: rodeoflow
 channels:
   - conda-forge
   - defaults
