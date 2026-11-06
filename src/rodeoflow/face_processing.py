@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import cv2
 import math
 import h5py
+import time
 from dataclasses import dataclass
 from scipy.ndimage import median_filter
 
@@ -37,9 +38,10 @@ class FaceConfig:
     manual_anchor: dict | None = None
 
 class FaceAnalyzer():
-    def __init__(self, cfg:FaceConfig=None, opticalflow_enigne:str='DIS', save_vectorfield: bool=False):
+    def __init__(self, cfg:FaceConfig=None, opticalflow_enigne:str='DIS', save_vectorfield: bool=False, downsampling_factor:int=1):
         self.opticalflow_enigne = opticalflow_enigne
         self.save_vectorfield = save_vectorfield
+        self.downsampling_factor = downsampling_factor
 
         if cfg:
             self.cfg = cfg
@@ -367,9 +369,9 @@ class FaceAnalyzer():
         # Initialize and run the Optical Flow
         gpu_flow : BaseOF = None
         if self.opticalflow_enigne == 'FB':
-            gpu_flow = FarnebackOF()
+            gpu_flow = FarnebackOF(downsample_factor=self.downsampling_factor)
         elif self.opticalflow_enigne == 'DIS':
-            gpu_flow = DISFlowOF()
+            gpu_flow = DISFlowOF(downsample_factor=self.downsampling_factor)
         else:
             raise RuntimeError(f"Unexpected flow type {self.opticalflow_enigne}, expected 'DIS' or 'FB'.")
 
@@ -382,7 +384,10 @@ class FaceAnalyzer():
 
         gpu_flow.open(videopath, start=start, end=end)
         gpu_flow.set_masks(masks)
+
+        of_start_time = time.perf_counter()
         out = gpu_flow.run()
+        of_runtime = time.perf_counter() - of_start_time
 
         motion = np.hstack([out['diff'], out['mag'], out['ang']])
         cols = ['MotionEnergy_Nose','MotionEnergy_Whiskerpad','MotionEnergy_Mouth','MotionEnergy_Cheek',
@@ -391,6 +396,12 @@ class FaceAnalyzer():
 
         df_statistics = pd.DataFrame(motion, columns=cols)
         flow_grid = out["flow_grid"] if self.save_vectorfield else None
+
+        num_frames = len(df_statistics) 
+        of_throughput_fps = num_frames / of_runtime if of_runtime > 0 else 0.0
+        print(f"Optical Flow Runtime:     {of_runtime:.4f} s")
+        print(f"Total Frames Processed:   {num_frames}")
+        print(f"Optical Flow Throughput:  {of_throughput_fps:.2f} FPS")
 
         return df_statistics, flow_grid
 
@@ -502,10 +513,10 @@ class FaceAnalyzer():
 
         return envelope, pd.Series(peak_flags, index=series.index)
 
-    def analyse(self, face_file: Path, landmark_dir: Path, use_nmf_masks=True):
+    def analyse(self, face_file: Path, landmark_dir: Path, overwrite=False, use_nmf_masks=True):
         out_file = face_file.with_name(face_file.stem + '_rodeoflow.h5')
         out_grid = face_file.with_name(face_file.stem + '_optical_flow_grid.npz')
-        if out_file.exists() and not getattr(self, 'overwrite', False):
+        if out_file.exists() and not overwrite:
             print(f"{out_file} already analysed, skipping ahead...")
             return
         markers_face = load_markers(face_file, key=None)

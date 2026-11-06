@@ -209,7 +209,7 @@ class BaseOF(ABC):
         ...
 
 class FarnebackOF(BaseOF):
-    def __init__(self, config_args=None, n_iters=3):
+    def __init__(self, config_args=None, n_iters=5, downsample_factor=1):
         super().__init__()
         self.args = config_args or dict(
             numLevels=5, pyrScale=.5, fastPyramids=True, winSize=25,
@@ -218,7 +218,16 @@ class FarnebackOF(BaseOF):
         self.of = cv2.cuda_FarnebackOpticalFlow.create(**self.args)
         self.compute_stream = cv2.cuda.Stream()
         self.copy_stream = cv2.cuda.Stream()
-        
+
+        if downsample_factor < 1:
+            print(f"downsample_factor must be >= 1, got {downsample_factor}, ignoring downsampling.")
+            self.downsample_factor = 1
+        elif (downsample_factor % 2 != 0) and not (downsample_factor == 1):
+            print(f"downsample_factor must be a multiple of 2, got {downsample_factor}, ignoring downsampling.")
+            self.downsample_factor = 1
+        else:
+            self.downsample_factor = downsample_factor
+
         self.masks_np = None
         self.masks_gpu = []
         self.px_per_mask = None
@@ -230,6 +239,8 @@ class FarnebackOF(BaseOF):
         self.fps = 0
         self.height = 0
         self.width = 0
+        self.height_ds = 0
+        self.width_ds = 0
 
         self.gpu_bgr = None
         self.gpu_gray = None
@@ -239,21 +250,36 @@ class FarnebackOF(BaseOF):
         self.anchors = None
 
         self.save_vectors = False
-        self.downsample_factor = 8
+        self.downsample_save_factor = 8
         self.ready_evt = cv2.cuda.Event()
     
-    def set_masks(self, masks: list[np.ndarray]):
-        self.masks_np = [np.ascontiguousarray(m.astype('f4')) for m in masks]
-        self.px_per_mask = np.array([m.sum() for m in masks], dtype='f4')
-        self.masks_gpu = []
+    # def set_masks(self, masks: list[np.ndarray]):
+    #     self.masks_np = [np.ascontiguousarray(m.astype('f4')) for m in masks]
+    #     self.px_per_mask = np.array([m.sum() for m in masks], dtype='f4')
+    #     self.masks_gpu = []
         
+    #     for m in self.masks_np:
+    #         m_gpu = cv2.cuda_GpuMat()
+    #         m_gpu.upload(m, stream=self.copy_stream)
+    #         self.masks_gpu.append(m_gpu)
+            
+    #     self.copy_stream.waitForCompletion()
+    #     print(f"{len(self.masks_np)} Masks uploaded to GPU")
+
+    def set_masks(self, masks: list[np.ndarray]):
+        if self.downsample_factor > 1:
+            masks = [cv2.resize(m.astype('f4'), (self.width_ds, self.height_ds), interpolation=cv2.INTER_AREA) for m in masks]
+            
+        self.masks_np = [np.ascontiguousarray(m.astype('f4')) for m in masks]
+        self.px_per_mask = np.array([m.sum() for m in self.masks_np], dtype='f4')
+        
+        self.masks_gpu = []
         for m in self.masks_np:
             m_gpu = cv2.cuda_GpuMat()
             m_gpu.upload(m, stream=self.copy_stream)
             self.masks_gpu.append(m_gpu)
             
         self.copy_stream.waitForCompletion()
-        print(f"{len(self.masks_np)} Masks uploaded to GPU")
 
     def set_anchors(self, anchors: pd.DataFrame):
         nosetip = anchors['nosetip'].values
@@ -292,14 +318,20 @@ class FarnebackOF(BaseOF):
             
         self.shape = frame0.shape
         self.height, self.width = self.shape[:2]
+        self.height_ds = self.height // self.downsample_factor
+        self.width_ds = self.width // self.downsample_factor
         self.fps = self.cap.get(cv2.CAP_PROP_FPS)
 
-        self.host_buf = np.empty((self.height, self.width, 3), dtype=np.uint8)
+        if self.downsample_factor > 1:
+            frame0 = cv2.resize(frame0, (self.width_ds, self.height_ds))
+            frame1 = cv2.resize(frame1, (self.width_ds, self.height_ds))
+
+        self.host_buf = np.empty((self.height_ds, self.width_ds, 3), dtype=np.uint8)
         cv2.cuda.registerPageLocked(self.host_buf) 
 
-        self.gpu_bgr = [cv2.cuda_GpuMat(self.height, self.width, cv2.CV_8UC3) for _ in range(2)]
-        self.gpu_gray = [cv2.cuda_GpuMat(self.height, self.width, cv2.CV_8UC1) for _ in range(2)]
-        self.gpu_gray_f32 = [cv2.cuda_GpuMat(self.height, self.width, cv2.CV_32FC1) for _ in range(2)]
+        self.gpu_bgr = [cv2.cuda_GpuMat(self.height_ds, self.width_ds, cv2.CV_8UC3) for _ in range(2)]
+        self.gpu_gray = [cv2.cuda_GpuMat(self.height_ds, self.width_ds, cv2.CV_8UC1) for _ in range(2)]
+        self.gpu_gray_f32 = [cv2.cuda_GpuMat(self.height_ds, self.width_ds, cv2.CV_32FC1) for _ in range(2)]
 
         for i, frame in enumerate([frame0, frame1]):
             self.host_buf[:] = frame
@@ -329,11 +361,12 @@ class FarnebackOF(BaseOF):
     def __del__(self):
         self.close()
 
-    def _allocate_run_buffers(self, max_frames, num_masks, ds_height, ds_width):
+    def _allocate_run_buffers(self, max_frames, num_masks, grid_h, grid_w):
         gpu = {
-            'flow': cv2.cuda_GpuMat(self.height, self.width, cv2.CV_32FC2),
-            'flow_x': cv2.cuda_GpuMat(self.height, self.width, cv2.CV_32FC1),
-            'flow_y': cv2.cuda_GpuMat(self.height, self.width, cv2.CV_32FC1),
+            # Use computation resolution for the active flow calc
+            'flow': cv2.cuda_GpuMat(self.height_ds, self.width_ds, cv2.CV_32FC2),
+            'flow_x': cv2.cuda_GpuMat(self.height_ds, self.width_ds, cv2.CV_32FC1),
+            'flow_y': cv2.cuda_GpuMat(self.height_ds, self.width_ds, cv2.CV_32FC1),
             'sum_u64': [cv2.cuda_GpuMat(1, 1, cv2.CV_64F) for _ in range(num_masks)],
             'sum_v64': [cv2.cuda_GpuMat(1, 1, cv2.CV_64F) for _ in range(num_masks)],
             'sum_diff64': [cv2.cuda_GpuMat(1, 1, cv2.CV_64F) for _ in range(num_masks)],
@@ -348,12 +381,12 @@ class FarnebackOF(BaseOF):
             'diff': np.empty((max_frames, num_masks), dtype=np.float32),
         }
         
-        # Only allocate vector field buffers if requested
         if self.save_vectors:
-            gpu['flow_small'] = cv2.cuda_GpuMat(ds_height, ds_width, cv2.CV_32FC2)
-            gpu['flow_x_small'] = cv2.cuda_GpuMat(ds_height, ds_width, cv2.CV_32FC1)
-            gpu['flow_y_small'] = cv2.cuda_GpuMat(ds_height, ds_width, cv2.CV_32FC1)
-            cpu['flow_grid'] = np.ascontiguousarray(np.empty((max_frames, ds_height, ds_width, 2), dtype=np.float32))
+            # Use the heavily downsampled grid resolution for the saved vectors
+            gpu['flow_small'] = cv2.cuda_GpuMat(grid_h, grid_w, cv2.CV_32FC2)
+            gpu['flow_x_small'] = cv2.cuda_GpuMat(grid_h, grid_w, cv2.CV_32FC1)
+            gpu['flow_y_small'] = cv2.cuda_GpuMat(grid_h, grid_w, cv2.CV_32FC1)
+            cpu['flow_grid'] = np.ascontiguousarray(np.empty((max_frames, grid_h, grid_w, 2), dtype=np.float32))
         
         cv2.cuda.registerPageLocked(cpu['mag'])
         cv2.cuda.registerPageLocked(cpu['ang'])
@@ -364,10 +397,10 @@ class FarnebackOF(BaseOF):
     def run(self):
         max_frames = max(0, self.nframes - (self.start + 1))
         num_masks = len(self.masks_gpu)
-        ds_height = self.height // self.downsample_factor
-        ds_width = self.width // self.downsample_factor
+        grid_h = self.height // self.downsample_save_factor
+        grid_w = self.width // self.downsample_save_factor
 
-        gpu, cpu = self._allocate_run_buffers(max_frames, num_masks, ds_height, ds_width)
+        gpu, cpu = self._allocate_run_buffers(max_frames, num_masks, grid_h, grid_w)
         compute_done_evt = cv2.cuda.Event()
 
         frame_idx = self.start + 1
@@ -382,8 +415,8 @@ class FarnebackOF(BaseOF):
                     
                     # Only execute the heavy downsampling and merging if saving vectors
                     if self.save_vectors:
-                        cv2.cuda.resize(gpu['flow_x'], (ds_width, ds_height), dst=gpu['flow_x_small'], interpolation=cv2.INTER_AREA, stream=self.compute_stream)
-                        cv2.cuda.resize(gpu['flow_y'], (ds_width, ds_height), dst=gpu['flow_y_small'], interpolation=cv2.INTER_AREA, stream=self.compute_stream)
+                        cv2.cuda.resize(gpu['flow_x'], (grid_w, grid_h), dst=gpu['flow_x_small'], interpolation=cv2.INTER_AREA, stream=self.compute_stream)
+                        cv2.cuda.resize(gpu['flow_y'], (grid_w, grid_h), dst=gpu['flow_y_small'], interpolation=cv2.INTER_AREA, stream=self.compute_stream)
                         cv2.cuda.merge([gpu['flow_x_small'], gpu['flow_y_small']], gpu['flow_small'], stream=self.compute_stream)
                     
                     diff = cv2.cuda.absdiff(self.gpu_gray_f32[cur], self.gpu_gray_f32[prev], stream=self.compute_stream)
@@ -392,6 +425,9 @@ class FarnebackOF(BaseOF):
                     ret, next_frame = self.cap.read()
                     if not ret:
                         break
+
+                    if self.downsample_factor > 1:
+                        next_frame = cv2.resize(next_frame, (self.width_ds, self.height_ds))
                         
                     self.host_buf[:] = next_frame 
                     self.gpu_bgr[prev].upload(self.host_buf, stream=self.copy_stream) 
@@ -423,7 +459,7 @@ class FarnebackOF(BaseOF):
 
                         mean_u = u / px_count
                         mean_v = v / px_count
-                        cpu['mag'][out_idx, i] = np.sqrt(mean_u**2 + mean_v**2)
+                        cpu['mag'][out_idx, i] = np.sqrt(mean_u**2 + mean_v**2) * self.downsample_factor
                         cpu['ang'][out_idx, i] = np.arctan2(mean_v, mean_u)
 
                     pbar.update(1)
@@ -466,17 +502,27 @@ class FarnebackOF(BaseOF):
 
 
 class DISFlowOF(BaseOF):
-    def __init__(self, preset=cv2.DISOPTICAL_FLOW_PRESET_MEDIUM):
+    def __init__(self, preset=cv2.DISOPTICAL_FLOW_PRESET_MEDIUM, downsample_factor=1):
         """
-        DIS Optical Flow.
+        DIS Optical Flow configured for macroscopic orofacial kinematics.
         """
-        cv2.setNumThreads(16)
+        if downsample_factor < 1:
+            print(f"downsample_factor must be >= 1, got {downsample_factor}, defaulting to 1.")
+            self.downsample_factor = 1
+        elif (downsample_factor % 2 != 0) and (downsample_factor != 1):
+            print(f"downsample_factor must be a multiple of 2, got {downsample_factor}, defaulting to 1.")
+            self.downsample_factor = 1
+        else:
+            self.downsample_factor = int(downsample_factor)
         
         self.dis = cv2.DISOpticalFlow_create(preset)
-        # self.dual_tvl1 = cv2.DualTVL1OpticalFlow_create()
-        # self.dis.setPatchStride(3)
         
-        # self.dis.setFinestScale(1)
+        # Map downsample_factor to finest scale natively:
+        # Factor 1 -> Scale 1 (User default)
+        # Factor 2 -> Scale 2
+        # Factor 4 -> Scale 3
+        self.finest_scale = 1 + int(np.log2(self.downsample_factor))
+        self.dis.setFinestScale(self.finest_scale)
 
         self.masks = []
         self.masks_sparse = None
@@ -488,17 +534,16 @@ class DISFlowOF(BaseOF):
         self.height = 0
         self.width = 0
         self.save_vectors = True
-        self.downsample_factor = 8
+        self.downsample_save_factor = 8
         self.video_path = None
         
         self.prev_gray = None
         self.cur_gray = None
         self.flow = None
-
         self.anchors = None
 
-    
     def set_masks(self, masks: list[np.ndarray]):
+        # No physical resizing needed - DIS flow output matches native image size
         for i, m in enumerate(masks):
             if m.shape != (self.height, self.width):
                 m = m.T
@@ -507,11 +552,11 @@ class DISFlowOF(BaseOF):
             masks[i] = m
             
         self.masks = [m.astype(np.float32) for m in masks]
-        self.px_per_mask = np.array([max(m.sum(), 1.0) for m in masks], dtype=np.float32)
+        self.px_per_mask = np.array([max(m.sum(), 1.0) for m in self.masks], dtype=np.float32)
 
         masks_matrix = np.array(self.masks).reshape(len(self.masks), -1)
         self.masks_sparse = sparse.csr_matrix(masks_matrix)
-        print(f"{len(self.masks)} masks set for DIS processing")
+        print(f"{len(self.masks)} masks set for DIS processing (Finest Scale: {self.finest_scale})")
     
     def set_anchors(self, anchors: pd.DataFrame):
         nosetip = anchors['nosetip'].values
@@ -521,7 +566,6 @@ class DISFlowOF(BaseOF):
         forehead = anchors['forehead'].values
 
         whiskerpad_center = np.vstack([nosetip, tearduct, mouth]).mean(axis=0)
-
         self.anchors = np.array([nosetip, whiskerpad_center, mouth, chin, tearduct, forehead])
 
     def video_info(self):
@@ -542,20 +586,15 @@ class DISFlowOF(BaseOF):
         self.nframes = total if end is None else min(end, total)
         self.fps = self.cap.get(cv2.CAP_PROP_FPS)
 
-        # Read first frame to init dimensions
         ret, frame0 = self.cap.read()
         if not ret: raise RuntimeError("couldn't read frame 0")
         
         self.height, self.width = frame0.shape[:2]
-        
-        # Init Flow Buffer
         self.mag  = np.empty((self.height, self.width), np.float32)
         self.ang  = np.empty((self.height, self.width), np.float32)
 
-        # Prepare prev_gray
         self.prev_gray = cv2.cvtColor(frame0, cv2.COLOR_BGR2GRAY)
         
-        # Rewind if we are starting at 0 (since we just read frame 0)
         if self.start == 0:
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
@@ -577,35 +616,50 @@ class DISFlowOF(BaseOF):
 
             px_counts = self.px_per_mask
             masks_sp = self.masks_sparse
+            
+            # Re-read first frame for the loop
+            if self.start == 0:
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.start)
+            
             ret, frame = self.cap.read()
             if not ret:
                 return {}
             
             self.prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            w_downsampled = int(self.width // self.downsample_factor)
-            h_downsampled = int(self.height // self.downsample_factor)
+            calc_h, calc_w = self.prev_gray.shape 
+            
+            w_downsampled = int(self.width // self.downsample_save_factor)
+            h_downsampled = int(self.height // self.downsample_save_factor)
             
             if self.save_vectors:
                 flow_grids = np.empty((max_frames, h_downsampled, w_downsampled, 2), dtype=np.float32)
             else:
                 flow_grids = None
-            self.flow = np.empty((self.height, self.width, 2), dtype=np.float32)
+                
+            self.flow = np.zeros((calc_h, calc_w, 2), dtype=np.float32)
             
             frame_idx = 0
             starttime = time.time()
+            
             while True:
                 ret, frame = self.cap.read()
                 if not ret or frame_idx >= max_frames - 1:
                     break
                 
                 self.cur_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                
+                if self.cur_gray.shape != (calc_h, calc_w):
+                    self.cur_gray = cv2.resize(self.cur_gray, (calc_w, calc_h))
+                
+                # Flow is natively computed and upsampled back to calc_h x calc_w
                 self.flow = self.dis.calc(self.prev_gray, self.cur_gray, self.flow)
-                flow_u = self.flow[..., 0].ravel()
-                flow_v = self.flow[..., 1].ravel()
+                
+                flow_flat = self.flow.reshape(-1, 2)
+                mean_uv = masks_sp.dot(flow_flat) / px_counts[:, None]
+                mean_x = mean_uv[:, 0]
+                mean_y = mean_uv[:, 1]
 
-                mean_x = masks_sp.dot(flow_u) / px_counts
-                mean_y = masks_sp.dot(flow_v) / px_counts
-
+                # No manual downsample multiplier needed; vectors are native pixel lengths
                 mags_out[frame_idx] = np.sqrt(mean_x**2 + mean_y**2)
                 angs_out[frame_idx] = np.arctan2(mean_y, mean_x)
 
@@ -616,8 +670,9 @@ class DISFlowOF(BaseOF):
                     flow_grids[frame_idx] = cv2.resize(
                         self.flow, 
                         (w_downsampled, h_downsampled), 
-                        interpolation=cv2.INTER_AREA
+                        interpolation=cv2.INTER_LINEAR
                     )
+                
                 self.prev_gray = self.cur_gray
                 pbar.update(1)
                 frame_idx += 1
@@ -625,7 +680,6 @@ class DISFlowOF(BaseOF):
             endtime = time.time()
             print(f'optical flow took {endtime - starttime:.2f} secs. - {(frame_idx + 1) / (endtime - starttime):.2f} FPS')
             self.cap.release()
-            # pbar.close()
 
         finally:
             self.close()

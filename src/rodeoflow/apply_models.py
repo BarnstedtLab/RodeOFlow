@@ -12,46 +12,62 @@ import numpy as np
 import yaml
 from contextlib import nullcontext
 import torch
-from pathlib import Path
-from torch.cuda.amp import autocast
+# Updated autocast import to the modern, device-agnostic version
+from torch.amp import autocast 
 
 import cv2
 import pandas as pd
 from ruamel.yaml import YAML
 import urllib.request
+from pathlib import Path
 import zipfile
 import shutil
 
+def get_device():
+    if torch.cuda.is_available():
+        return "cuda"
+    elif torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
 def download_models(models_dir):
     models_dir = Path(models_dir)
-    download_file = models_dir.with_suffix(".zip")
     expected_cfg = models_dir / "face" / "dlc" / "project_config.yaml"
 
     if not expected_cfg.exists():
-        if models_dir.exists():
-            shutil.rmtree(models_dir)
+        models_dir.mkdir(parents=True, exist_ok=True)
+        download_file = models_dir.parent / "rodeoflow_models_temp.zip"
 
         print("Downloading models...")
         nextcloud_url = "https://umg.files.academiccloud.de/s/F2BAgZM4SBDJBtn/download"
-        urllib.request.urlretrieve(nextcloud_url, download_file)
+        try:
+            urllib.request.urlretrieve(nextcloud_url, download_file)
+        except Exception as e:
+            print(f"Download failed: {e}")
+            return None
 
+        print(f"Unzipping models to {models_dir.parent}...")
         with zipfile.ZipFile(download_file) as mf_models:
-            print(f"Unzipping models to {models_dir.parent}...")
-            # Extract to parent directory so 'rodeoflow_models/' inside zip lands at 'models_dir'
             mf_models.extractall(models_dir.parent)
 
         if download_file.exists():
             download_file.unlink()
 
-        nested_dir = models_dir / "rodeoflow_models"
-        if nested_dir.exists():
+        # Safely move contents from the extracted folder into models_dir without deleting models_dir itself
+        nested_dir = models_dir.parent / "rodeoflow_models"
+        if nested_dir.exists() and nested_dir != models_dir:
             for item in nested_dir.iterdir():
+                target_item = models_dir / item.name
+                if target_item.exists():
+                    if target_item.is_dir():
+                        shutil.rmtree(target_item)
+                    else:
+                        target_item.unlink()
                 shutil.move(str(item), str(models_dir))
             nested_dir.rmdir()
 
         print("...done")
 
-    # Return model paths
     return dict(
         cfg_body_dlc = models_dir / "body/dlc/project_config.yaml",
         model_body_dlc = models_dir / "body/dlc/dlc-models-pytorch/iteration-1/MouseBodySep9-trainset95shuffle3/train/snapshot-best-260.pt",
@@ -63,14 +79,10 @@ def download_models(models_dir):
 
 
 def detect_engine(cfg_path):
-    """
-    Return 'pytorch' if this config belongs to DLC 3,
-    otherwise None.
-    """
     with open(cfg_path, 'r') as f:
         cfg = yaml.safe_load(f)
-    if (os.path.basename(cfg_path).startswith('pytorch_')   # DLC 3 puts a prefix
-        or cfg.get('engine') == 'pytorch'):                 # or DLC 3 may embed key
+    if (os.path.basename(cfg_path).startswith('pytorch_') 
+        or cfg.get('engine') == 'pytorch'):
         return 'pytorch'
     return None
 
@@ -92,9 +104,9 @@ class KeypointEngine(ABC):
 class LPDetector(KeypointEngine):
     def __init__(self, model_cfg_path, model_path):
         self.cfg = self.load_model_cfg(model_cfg_path)
-        # print(f"config loaded: {self.cfg}")
         self.model_path = model_path
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = get_device()
+        print(f"using device: {self.device}")
     
     def load_model_cfg(self, model_cfg_path):
         from omegaconf import OmegaConf
@@ -104,10 +116,6 @@ class LPDetector(KeypointEngine):
         return cfg
     
     def lp_csv_to_dlc_h5(self, csv_path, out_h5=None, scorer_name="heatmap_tracker"):
-        """
-        Convert LightningPose wide CSV (row0 bodyparts, row1 coords) to DLC-style HDF5.
-        MultiIndex level names must be exactly: ('scorer','bodyparts','coords').
-        """
         raw = pd.read_csv(csv_path, dtype=str, low_memory=False)
         bodyparts_row = raw.iloc[0]
         coords_row    = raw.iloc[1]
@@ -117,7 +125,7 @@ class LPDetector(KeypointEngine):
             if col == "scorer":
                 continue
             bp  = str(bodyparts_row.iloc[j]).strip()
-            crd = str(coords_row.iloc[j]).strip().lower()  # 'x','y','likelihood'
+            crd = str(coords_row.iloc[j]).strip().lower() 
             pred_cols.append((scorer_name, bp, crd))
             keep_cols.append(col)
 
@@ -150,15 +158,17 @@ class LPDetector(KeypointEngine):
 
         if not overwrite and preds_csv.is_file():
             return str(preds_csv), str(labeled_mp4)
-        autocast_enabled = autocast() if self.device == "cuda" else nullcontext()
+        
+        autocast_enabled = autocast(device_type=self.device) if self.device in ["cuda", "cpu"] else nullcontext()
+        
         with torch.no_grad():
             with autocast_enabled:
                 export_predictions_and_labeled_video(
                     video_file=video_file,
                     cfg=self.cfg,
                     prediction_csv_file=str(preds_csv),
-                    ckpt_file=self.model_path,      # uses checkpoint path
-                    labeled_mp4_file=str(labeled_mp4) if make_labeled_video else None,  # None skips rendering
+                    ckpt_file=self.model_path,
+                    labeled_mp4_file=str(labeled_mp4) if make_labeled_video else None,
                 )
         self.lp_csv_to_dlc_h5(str(preds_csv))
         return preds_csv, labeled_mp4
@@ -169,8 +179,8 @@ class DLCDetector(KeypointEngine):
         self.model_cfg = model_cfg_path
         self.shuffle = shuffle
         self.pose_cfg = Path(os.path.dirname(self.model_path)).parent / "test" /  "pose_cfg.yaml"
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        print("inited!")
+        self.device = get_device()
+        print(f"using device: {self.device}")
 
     def create_labeled_video(
         self,
@@ -226,7 +236,6 @@ class DLCDetector(KeypointEngine):
         scorer = scorers[0]
 
         def col(bp, coord):
-            # handle possible coord names: 'x','y','likelihood' or 'likelihoods'
             candidates = [(scorer, bp, coord)]
             if coord == "likelihood":
                 candidates.append((scorer, bp, "likelihoods"))
@@ -243,13 +252,11 @@ class DLCDetector(KeypointEngine):
             if xC and yC and lC:
                 triplets.append((bp, xC, yC, lC))
             else:
-                # skip bodypart if any column missing
                 continue
 
         if not triplets:
             raise ValueError("No valid (x,y,likelihood) columns found for listed bodyparts.")
 
-        # open video IO
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             raise IOError(f"Could not open video: {video_path}")
@@ -258,7 +265,6 @@ class DLCDetector(KeypointEngine):
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         nframes_vid = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        # align lengths
         nframes_pred = len(df)
         nframes = min(nframes_vid, nframes_pred)
 
@@ -272,7 +278,6 @@ class DLCDetector(KeypointEngine):
             cap.release()
             raise IOError(f"Could not open writer: {out_path}")
 
-        # simple deterministic colors per bodypart
         def bp_color(i, total):
             hue = int(179 * i / max(1, total))
             col_bgr = cv2.cvtColor(np.uint8([[[hue, 200, 255]]]), cv2.COLOR_HSV2BGR)[0, 0, :]
@@ -280,7 +285,6 @@ class DLCDetector(KeypointEngine):
 
         colors = {bp: bp_color(i, len(triplets)) for i, (bp, *_cols) in enumerate(triplets)}
 
-        # iterate frames
         for idx in range(nframes):
             ok, frame = cap.read()
             if not ok:
@@ -314,7 +318,7 @@ class DLCDetector(KeypointEngine):
         from deeplabcut.core.engine import Engine
 
         os.makedirs(out_dir, exist_ok=True)
-        autocast_enabled = autocast() if self.device == "cuda" else nullcontext()
+        autocast_enabled = autocast(device_type=self.device) if self.device in ["cuda", "cpu"] else nullcontext()
 
         with torch.no_grad():
             with autocast_enabled:
@@ -322,11 +326,11 @@ class DLCDetector(KeypointEngine):
                     config=self.model_cfg,
                     videos=[video_file],
                     shuffle=self.shuffle,
-                    videotype=None,        # e.g. "mp4" or None
+                    videotype=None,
                     destfolder=out_dir,
                     engine=Engine.PYTORCH,
-                    modelprefix=os.path.dirname(self.model_cfg),    # directory of pytorch_config.yaml
-                    device=str(self.device) if self.device == 'cuda' else None,
+                    modelprefix=os.path.dirname(self.model_cfg), 
+                    device=str(self.device) if self.device in ['cuda', 'mps'] else None, # Passes 'mps' or 'cuda' to DLC
             )
         
             if make_labeled_video:
