@@ -1,0 +1,37 @@
+
+name: rodeoflow_mac
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.10
+  - numpy=1.26.4
+  - h5py
+  - pytables>=3.9.2
+  - ffmpeg
+  - scipy
+  - pandas
+  - pip
+
+  - pip:
+      - torch
+      - torchvision
+      - torchaudio
+      - transformers<4.44
+      - pyocclient
+
+      # Lightning Pose dependencies
+      - fiftyone
+      - hydra-core
+      - omegaconf
+      - imgaug
+      - kaleido
+      - kornia
+      - lightning
+      - matplotlib
+      - moviepy==1.0.3
+
+      # DeepLabCut
+      # Install separately if needed:
+      # pip install --pre deeplabcut
