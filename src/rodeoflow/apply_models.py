@@ -145,13 +145,14 @@ class LPDetector(KeypointEngine):
         video_file: str,
         out_dir: str,
         make_labeled_video: bool = False,
-        overwrite: bool = False):
+        overwrite: bool = False,
+        prediction_suffix: str = ""):
         from lightning_pose.utils.predictions import export_predictions_and_labeled_video
 
         out_path = Path(out_dir)
         if not out_path.exists():
             out_path.mkdir(exist_ok=True, parents=True)
-        base = os.path.splitext(os.path.basename(video_file))[0]
+        base = os.path.splitext(os.path.basename(video_file))[0] + prediction_suffix
         preds_csv = out_path / f"{base}.csv"
         labeled_mp4 = out_path.parent /  f"{base}_labeled.mp4" if make_labeled_video else None
 
@@ -192,10 +193,20 @@ class DLCDetector(KeypointEngine):
         thickness: int = 2,
         draw_names: bool = False
     ):
+        """
+        Minimal labeled video writer for DLC single-animal outputs.
+        - video_path: path to the original video
+        - h5_path: DLC predictions (.h5) with MultiIndex columns (scorer, bodypart, coord)
+        - pose_cfg_path: test/pose_cfg.yaml containing metadata or joint names
+        - out_path: output mp4 path (defaults to <video_basename>_labeled.mp4 next to input)
+        - pcutoff: confidence threshold for drawing
+        """
+        # load predictions first
         df = pd.read_hdf(h5_path)
         if not isinstance(df.columns, pd.MultiIndex) or df.columns.nlevels < 3:
             raise ValueError("Unexpected H5 columns. Expect MultiIndex (scorer, bodypart, coord).")
 
+        # load bodyparts from pose config with multi-key fallbacks
         bodyparts = []
         if os.path.exists(pose_cfg_path):
             try:
@@ -212,12 +223,15 @@ class DLCDetector(KeypointEngine):
                 or []
             )
 
+        # Fallback: extract unique bodypart names directly from HDF5 MultiIndex columns
         if not bodyparts:
             bodyparts = df.columns.get_level_values(1).unique().tolist()
 
         if not bodyparts:
             raise ValueError("Could not extract bodyparts list from pose_cfg.yaml or HDF5 output file.")
 
+        # map: bodypart -> (x_col, y_col, l_col)
+        # pick the first scorer layer present
         scorers = sorted(set([c[0] for c in df.columns]))
         scorer = scorers[0]
 

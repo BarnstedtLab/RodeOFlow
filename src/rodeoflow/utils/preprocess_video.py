@@ -67,7 +67,10 @@ def get_video_for_marker(marker_file: Path, dlc_dir: Path):
             raise ValueError(f"Expected .h5 marker file, got: {marker_file}")
 
         base = marker_file.stem
-        i = base.lower().find("dlc")
+        lower_base = base.lower()
+        i = lower_base.find("dlc")
+        if i == -1:
+            i = lower_base.find("_lp_mousebody")
         prefix = base[:i] if i != -1 else base
         prefix = prefix.rstrip("_-. ")
 

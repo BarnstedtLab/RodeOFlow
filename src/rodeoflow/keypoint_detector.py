@@ -18,7 +18,7 @@ class KeypointDetector():
                  flip_input_body=False, keypoint_model_weights_face=None,
                  keypoint_model_weights_body=None, models_dir=None, 
                  keypoint_engine_body='LP', filetype_body='mp4',
-                 crop_box_body=None, overwrite=False, save_labled_videos=True):
+                 crop_box_body=None, overwrite=False, save_labeled_videos=True):
 
         self.keypoint_engine_face = keypoint_engine_face
         self.crop_box_face = crop_box_face
@@ -32,9 +32,9 @@ class KeypointDetector():
         self.crop_box_body = crop_box_body
         self.keypoint_model_weights_body = keypoint_model_weights_body
         self.overwrite = overwrite
-        self.save_labled_videos = save_labled_videos
+        self.save_labeled_videos = save_labeled_videos
         if self.models_dir is None:
-            self.models_dir = Path.cwd() / "mf_models"
+            self.models_dir = Path.cwd() / "rodeoflow_models"
                     
         self.model_paths = download_models(self.models_dir)
 
@@ -102,7 +102,7 @@ class KeypointDetector():
                 print("Applying FACE model:", cfg, "weights:", self.keypoint_model_weights_face)
                 det = DLCDetector(cfg, self.keypoint_model_weights_face, shuffle=2)
                     
-                det.detect_keypoints(str(face_path), str(dir_out), self.save_labled_videos, self.overwrite)
+                det.detect_keypoints(str(face_path), str(dir_out), self.save_labeled_videos, self.overwrite)
 
     def detect_body_keypoints(self, vid_dir, cfg=None, include_key=None, n_videos=-1):
         if cfg is None or self.keypoint_model_weights_body is None:
@@ -160,7 +160,11 @@ class KeypointDetector():
                 body_file_path = Path(bodyfile)
                 base = body_file_path.stem
                 
-                out_exists = list(dir_out.glob(f"{base}*.h5")) + list(dir_out.glob(f"{base}*.csv"))
+                if self.keypoint_engine_body == 'LP':
+                    prediction_base = f"{base}_LP_MouseBody"
+                    out_exists = [path for path in (dir_out / f"{prediction_base}.h5", dir_out / f"{prediction_base}.csv",) if path.exists()]
+                else:
+                    out_exists = list(dir_out.glob(f"{base}*.h5")) + list(dir_out.glob(f"{base}*.csv"))
 
                 if out_exists and not self.overwrite:
                     print(f"Skipping {body_file_path.name} (already labelled: {out_exists[0]}).")
@@ -169,7 +173,8 @@ class KeypointDetector():
                 print("Applying BODY model:", cfg, "weights:", self.keypoint_model_weights_body)
                 if self.keypoint_engine_body == 'LP':
                     det = LPDetector(cfg, self.keypoint_model_weights_body)
+                    det.detect_keypoints(str(bodyfile), str(dir_out), self.save_labeled_videos, self.overwrite, prediction_suffix="_LP_MouseBody",)
                 else:
                     det = DLCDetector(cfg, self.keypoint_model_weights_body, shuffle=3)
-                det.detect_keypoints(str(bodyfile), str(dir_out), self.save_labled_videos, self.overwrite)
+                    det.detect_keypoints(str(bodyfile), str(dir_out), self.save_labeled_videos, self.overwrite)
        

@@ -13,17 +13,24 @@ def get_files2analyse(keypoint_dir, overwrite, analysis_type):
         analysis_type = 'Body'
     if keypoint_dir is None:
         raise RuntimeError("No DLC directory defined.")
-    d = Path(keypoint_dir)
+    
+    if analysis_type == 'Body':
+        body_files = set(d.glob('*DLC*MouseBody*.h5'))
+        body_files.update(d.glob('*LP_MouseBody*.h5'))
 
-    all_files = sorted(d.glob(f'*DLC*Mouse{analysis_type}*.h5'))
+        # Also recognize older LP files named exactly after their video.
+        video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.m4v'}
+        for video in d.parent.iterdir():
+            if (
+                video.is_file()
+                and video.suffix.lower() in video_extensions
+                and 'labeled' not in video.name.lower()
+            ):
+                legacy_file = d / f'{video.stem}.h5'
+                standardized_file = d / f'{video.stem}_LP_MouseBody.h5'
+                if legacy_file.is_file() and not standardized_file.is_file():
+                    body_files.add(legacy_file)
 
-    def needs_processing(p: Path) -> bool:
-        if p.name.lower().endswith("_rodeoflow.h5"):
-            return False
-        mf = p.with_name(p.stem + '_rodeoflow.h5')
-        if mf.exists() and not overwrite:
-            print(f"skipping file {p.name} as it is already analysed!") 
-        return overwrite or not mf.exists()
-
-    rtrn = [p for p in all_files if needs_processing(p)]
-    return rtrn
+        all_files = sorted(body_files)
+    else:
+        all_files = sorted(d.glob(f'*DLC*Mouse{analysis_type}*.h5'))
