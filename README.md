@@ -13,6 +13,43 @@ RodeOFlow is a Python toolbox for quantifying facial and body movements in head-
 ![Example behavior](img/103_behaviour.gif)
 
 ## Installation
+The easiest way for installation is to use one of our simple installation scripts which you can download and run for an automatic installation process.
+Since these scripts depend on conda, please make sure to have conda available on your system before running the scripts.
+
+Download one of the following files depending on your OS:
+* [Linux installer script](https://raw.githubusercontent.com/BarnstedtLab/RodeOFlow/dev/installer_linux.sh)
+* [macOS installer script](https://raw.githubusercontent.com/BarnstedtLab/RodeOFlow/dev/installer_macos.sh)
+* [Windows installer script](https://raw.githubusercontent.com/BarnstedtLab/RodeOFlow/dev/installer_windows.ps1)
+
+After downloading, you just need to run one of the following commands (depending on your OS):
+
+Linux:
+
+```bash
+bash /path/to/installer_linux.sh 
+```
+
+MacOs:
+
+```bash
+bash /path/to/installer_macos.sh 
+```
+
+Windows:
+
+```powershell
+.\path\to\installer_windows.ps1
+```
+
+
+**Alternatively**, you can setup the Conda environments yourself using our environment definition files by following our following instructions:
+
+Download one of the following conda environment definition files depending on your OS:
+* [Linux environment file](https://raw.githubusercontent.com/BarnstedtLab/RodeOFlow/dev/environment/environment_setup_linux.yaml)
+* [macOS environment file](https://raw.githubusercontent.com/BarnstedtLab/RodeOFlow/dev/environment/environment_setup_macos.yaml)
+* [Windows environment file](https://raw.githubusercontent.com/BarnstedtLab/RodeOFlow/dev/environment/environment_setup_windows.yaml)
+
+
 
 Create and activate a Conda environment using the setup file for your operating system.
 
