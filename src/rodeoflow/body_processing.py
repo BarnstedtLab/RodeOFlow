@@ -220,10 +220,8 @@ class BodyAnalyzer:
         flexion = 180 - angle
         return angle, flexion
 
-    def _extract_strides(self, markers, paw_name, body_length, internal_angle, flexion, fps):
-        paw_x = self._clean_coord(markers[paw_name], "x", fps)
-        ref_x = self._clean_coord(markers[self.cfg.reference_marker], "x", fps)
-        paw_xrel = self.cfg.x_direction * (paw_x - ref_x)
+    def _extract_strides(self, paw_xrel, body_length, internal_angle, flexion, fps):
+        # Fill gaps temporarily for event detection. The exported trace retains them.
         interp_limit = max(1, int(round(self.cfg.interpolation_sec * fps)))
         detect = paw_xrel.interpolate(limit=interp_limit,limit_direction="both",limit_area="inside",)
         empty = pd.DataFrame()
@@ -386,11 +384,18 @@ class BodyAnalyzer:
             ("fore","paw_front-right2",("paw_front-right1", "paw_front-right2", "paw_front-right3"),),
             ("hind","paw_back-right2",("paw_back-right1", "paw_back-right2", "paw_back-right3"),
             ),]
+        ref_x = self._clean_coord(markers_body[self.cfg.reference_marker], "x", fps)
         for limb, paw_name, angle_points in limb_specs:
+            paw_x = self._clean_coord(markers_body[paw_name], "x", fps)
+            paw_xrel = self.cfg.x_direction * (paw_x - ref_x)
             internal_angle, flexion = self._internal_angle(markers_body, angle_points, fps)
-            cycles, n_candidates, n_qc_valid, n_internal_rejected = (
-                self._extract_strides(markers_body,paw_name,body_length,internal_angle,flexion,fps,)
-            )
+
+            prefix = "ForePaw" if limb == "fore" else "HindPaw"
+            body_raw[f"{prefix}_XRel_px"] = paw_xrel
+            body_raw[f"{prefix}_InternalAngle_deg"] = internal_angle
+            body_raw[f"{prefix}_Flexion_deg"] = flexion
+
+            cycles, n_candidates, n_qc_valid, n_internal_rejected = (self._extract_strides(paw_xrel, body_length, internal_angle, flexion, fps))
             processing_rows.append({
                 "limb": limb,
                 "fps": fps,
