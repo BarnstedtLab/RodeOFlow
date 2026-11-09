@@ -2,9 +2,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# REPO="https://raw.githubusercontent.com/BarnstedtLab/RodeOFlow/master"
-REPO="https://raw.githubusercontent.com/JF631/RodeOFlow/dev"
-ENV_FILE="environment_setup_mac.yaml"
+REPO="https://raw.githubusercontent.com/BarnstedtLab/RodeOFlow/dev"
+ENV_FILE="environment_setup_macos.yaml"
 ENV_NAME="rodeoflow"
 
 echo "======================================"
@@ -22,7 +21,7 @@ done
 conda --version
 
 # Download environment
-TMP_YAML="$(mktemp)"
+TMP_YAML="$(mktemp -t rodeoflow_envXXXXXX).yaml"
 trap 'rm -f "$TMP_YAML"' EXIT
 
 echo "Downloading macOS environment..."
@@ -45,21 +44,21 @@ conda run -n "$ENV_NAME" python -m pip install \
     matplotlib \
     "moviepy<2"
 
-# Install DeepLabCut
-echo "Installing DeepLabCut..."
-conda run -n "$ENV_NAME" \
-    python -m pip install --pre deeplabcut
-
 # Install Lightning Pose without NVIDIA DALI
 echo "Installing Lightning Pose 1.8.1..."
 conda run -n "$ENV_NAME" \
     python -m pip install lightning-pose==1.8.1 --no-deps
 
+# Install DeepLabCut
+echo "Installing DeepLabCut..."
+conda run -n "$ENV_NAME" \
+    python -m pip install --pre deeplabcut
+
 # Install RodeOFlow
 echo "Installing RodeOFlow..."
 conda run -n "$ENV_NAME" \
     python -m pip install \
-    git+https://github.com/BarnstedtLab/RodeOFlow.git --no-deps
+    git+https://github.com/BarnstedtLab/RodeOFlow.git@dev --no-deps
 
 # Verify
 echo "Verifying installation..."
