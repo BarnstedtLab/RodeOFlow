@@ -2,7 +2,7 @@ name: rodeoflow
 channels:
   - pytorch
   - conda-forge
-  - nodefaults
+  - defaults
 dependencies:
   - python=3.10
   - numpy=1.26.4
@@ -14,17 +14,17 @@ dependencies:
   - pytorch::pytorch
   - pytorch::torchvision
   - pytorch::torchaudio
-  # Packages previously under pip:
-  - transformers<4.44
-  - pyocclient
-  - fiftyone
-  - hydra-core
-  - omegaconf
-  - imgaug
-  - python-kaleido    # Note the name change for conda
-  - kornia
-  - lightning
-  - matplotlib
-  - moviepy=1.0.3     # Use single '=' for conda version pinning
-  # Keep pip installed so your bash script can still run 'pip install git+...'
   - pip
+  - pip:
+      - transformers<4.44
+      - pyocclient
+      # Lightning Pose
+      - fiftyone
+      - hydra-core
+      - omegaconf
+      - imgaug
+      - kaleido
+      - kornia
+      - lightning
+      - matplotlib
+      - moviepy==1.0.3
