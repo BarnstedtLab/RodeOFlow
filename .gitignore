@@ -3,4 +3,5 @@
 dist
 .DS_Store
 build/
+sample_data/
 docs/_build/
