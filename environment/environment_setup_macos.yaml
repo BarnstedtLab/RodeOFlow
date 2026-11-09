@@ -1,0 +1,30 @@
+name: rodeoflow
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - numpy=1.26.4
+  - h5py
+  - pytables>=3.9.2
+  - ffmpeg
+  - scipy
+  - pandas
+  - pytorch::pytorch
+  - pytorch::torchvision
+  - pytorch::torchaudio
+  - pip
+  - pip:
+      - transformers<4.44
+      - pyocclient
+      # Lightning Pose
+      - fiftyone
+      - hydra-core
+      - omegaconf
+      - imgaug
+      - kaleido
+      - kornia
+      - lightning
+      - matplotlib
+      - moviepy==1.0.3
