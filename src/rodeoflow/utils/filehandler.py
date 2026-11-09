@@ -1,42 +1,41 @@
 from pathlib import Path
 
-def get_files2analyse(keypoint_dir, analysis_type: str, overwrite: bool = False) -> list[Path]:
-    '''
-    Returns face OR body files found in keypoint_dir that should be analyzed.
-    Matches patterns like '*DLC*Mouse{Face|Body}*.h5' and legacy LightningPose files.
-    '''
-    if analysis_type not in ['face', 'body']:
-        raise ValueError(f"Invalid analysis_type: '{analysis_type}'. Must be 'face' or 'body'.")
-
+def get_files2analyse(keypoint_dir, overwrite, analysis_type):
+    """Return tracking H5 files that still need face or body analysis."""
+    if analysis_type not in {"face", "body"}:
+        raise ValueError("analysis_type must be 'face' or 'body'.")
     if keypoint_dir is None:
-        raise RuntimeError("No DLC directory defined.")
+        raise ValueError("A keypoint directory is required.")
 
     d = Path(keypoint_dir)
-    if not d.exists():
-        raise FileNotFoundError(f"Keypoint directory does not exist: {d}")
+    if not d.is_dir():
+        raise NotADirectoryError(d)
 
-    cased_type = analysis_type.capitalize()  # 'Face' or 'Body'
+    model_name = "MouseFace" if analysis_type == "face" else "MouseBody"
+    candidates = set(d.glob(f"*DLC*{model_name}*.h5"))
 
-    if cased_type == 'Body':
-        body_files = set(d.glob('*DLC*MouseBody*.h5'))
-        body_files.update(d.glob('*LP_MouseBody*.h5'))
+    if analysis_type == "body":
+        candidates.update(d.glob("*_LP_MouseBody.h5"))
 
-        # Recognize older LP files named directly after their video stem
-        video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.m4v'}
-        if d.parent.exists():
-            for video in d.parent.iterdir():
-                if (
-                    video.is_file()
-                    and video.suffix.lower() in video_extensions
-                    and 'labeled' not in video.name.lower()
-                ):
-                    legacy_file = d / f'{video.stem}.h5'
-                    standardized_file = d / f'{video.stem}_LP_MouseBody.h5'
-                    if legacy_file.is_file() and not standardized_file.is_file():
-                        body_files.add(legacy_file)
+        # Support older LP predictions named after the source video.
+        video_extensions = {".mp4", ".avi", ".mov", ".mkv", ".m4v"}
+        for video in d.parent.iterdir():
+            if (
+                video.is_file()
+                and video.suffix.lower() in video_extensions
+                and "labeled" not in video.stem.lower()
+            ):
+                legacy = d / f"{video.stem}.h5"
+                standardized = d / f"{video.stem}_LP_MouseBody.h5"
+                if legacy.is_file() and not standardized.is_file():
+                    candidates.add(legacy)
 
-        all_files = sorted(body_files)
-    else:
-        all_files = sorted(d.glob(f'*DLC*Mouse{cased_type}*.h5'))
+    files_to_analyze = []
+    for path in sorted(candidates):
+        if not path.is_file() or path.stem.endswith("_rodeoflow"):
+            continue
+        output = path.with_name(f"{path.stem}_rodeoflow.h5")
+        if overwrite or not output.exists():
+            files_to_analyze.append(path)
 
-    return all_files
+    return files_to_analyze

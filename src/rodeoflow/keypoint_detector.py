@@ -160,11 +160,12 @@ class KeypointDetector():
                 body_file_path = Path(bodyfile)
                 base = body_file_path.stem
                 
-                if self.keypoint_engine_body == 'LP':
-                    prediction_base = f"{base}_LP_MouseBody"
-                    out_exists = [path for path in (dir_out / f"{prediction_base}.h5", dir_out / f"{prediction_base}.csv",) if path.exists()]
+                if self.keypoint_engine_body == "LP":
+                    prediction_h5 = dir_out / f"{base}_LP_MouseBody.h5"
+                    out_exists = [prediction_h5] if prediction_h5.is_file() else []
                 else:
-                    out_exists = list(dir_out.glob(f"{base}*.h5")) + list(dir_out.glob(f"{base}*.csv"))
+                    out_exists = [path for path in dir_out.glob("*.h5") if path.is_file() and path.stem.startswith(f"{base}DLC") and "MouseBody" in path.stem[len(base):] and not path.stem.endswith("_rodeoflow")
+    ]
 
                 if out_exists and not self.overwrite:
                     print(f"Skipping {body_file_path.name} (already labelled: {out_exists[0]}).")

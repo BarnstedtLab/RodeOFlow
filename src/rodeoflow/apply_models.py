@@ -157,10 +157,12 @@ class LPDetector(KeypointEngine):
         labeled_mp4 = out_path.parent /  f"{base}_labeled.mp4" if make_labeled_video else None
 
         if not overwrite and preds_csv.is_file():
+            preds_h5 = preds_csv.with_suffix(".h5")
+            if not preds_h5.is_file():
+                self.lp_csv_to_dlc_h5(str(preds_csv), out_h5=preds_h5)
             return str(preds_csv), str(labeled_mp4)
-        
-        autocast_enabled = autocast(device_type=self.device) if self.device in ["cuda", "cpu"] else nullcontext()
-        
+
+        autocast_enabled = (autocast(device_type=self.device) if self.device in ["cuda", "cpu"] else nullcontext())
         with torch.no_grad():
             with autocast_enabled:
                 export_predictions_and_labeled_video(
