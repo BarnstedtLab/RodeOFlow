@@ -25,7 +25,7 @@ $TEMP_YAML = Join-Path $env:TEMP $ENV_FILE
 Write-Host "Downloading Windows environment..."
 
 Invoke-WebRequest `
-    -Uri "$REPO/$ENV_FILE" `
+    -Uri "$REPO/environment/$ENV_FILE" `
     -OutFile $TEMP_YAML
 
 try {

@@ -25,7 +25,7 @@ TMP_YAML="$(mktemp -t rodeoflow_envXXXXXX).yaml"
 trap 'rm -f "$TMP_YAML"' EXIT
 
 echo "Downloading macOS environment..."
-curl -fsSL "$REPO/$ENV_FILE" -o "$TMP_YAML"
+curl -fsSL "$REPO/environment/$ENV_FILE" -o "$TMP_YAML"
 
 # Create environment
 echo "Creating Conda environment..."
