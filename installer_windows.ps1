@@ -1,7 +1,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$REPO = "https://raw.githubusercontent.com/BarnstedtLab/RodeOFlow/dev"
+$REPO = "https://raw.githubusercontent.com/BarnstedtLab/RodeOFlow/master"
 $ENV_FILE = "environment_setup_windows.yaml"
 $ENV_NAME = "rodeoflow"
 
@@ -51,7 +51,7 @@ try {
     Write-Host "Installing RodeOFlow..."
 
     conda run -n $ENV_NAME python -m pip install `
-        git+https://github.com/BarnstedtLab/RodeOFlow.git@dev --no-deps
+        git+https://github.com/BarnstedtLab/RodeOFlow.git@master --no-deps
 
     if ($LASTEXITCODE -ne 0) {
         throw "RodeOFlow installation failed."
