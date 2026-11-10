@@ -8,6 +8,7 @@ Starts detection process of keypoints.
 
 
 from pathlib import Path
+import platform
 from rodeoflow.utils.preprocess_video import flip_vid, crop_vid
 from rodeoflow.apply_models import LPDetector, DLCDetector, download_models
 
@@ -17,7 +18,7 @@ class KeypointDetector():
                  crop_box_face=None, flip_input_face=False, 
                  flip_input_body=False, keypoint_model_weights_face=None,
                  keypoint_model_weights_body=None, models_dir=None, 
-                 keypoint_engine_body='LP', filetype_body='mp4',
+                 keypoint_engine_body='DLC', filetype_body='mp4',
                  crop_box_body=None, overwrite=False, save_labeled_videos=True):
 
         self.keypoint_engine_face = keypoint_engine_face
@@ -26,6 +27,9 @@ class KeypointDetector():
         self.keypoint_model_weights_face = keypoint_model_weights_face
         self.models_dir = models_dir
         self.keypoint_engine_body = keypoint_engine_body
+        if platform.system() == "Darwin" and keypoint_engine_body == 'LP':
+            print("Warning: Lightning Pose ('LP') inference is incompatible with macOS, using DeepLabCut instead.")
+            self.keypoint_engine_body = 'DLC'
         self.filetype_face = filetype_face
         self.filetype_body = filetype_body
         self.flip_input_body = flip_input_body
