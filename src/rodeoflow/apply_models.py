@@ -375,9 +375,10 @@ class DLCDetector(KeypointEngine):
             if make_labeled_video:
                 vid_stem = Path(video_file).stem
                 h5_out_candidates = sorted(
-                    Path(out_dir).glob(f"{vid_stem}*shuffle{self.shuffle}*.h5"),
+                    (p for p in Path(out_dir).glob(f"{vid_stem}*shuffle{self.shuffle}*.h5")
+                        if p.is_file() and not p.stem.endswith("_rodeoflow")),
                     key=lambda p: p.stat().st_mtime,
-                    reverse=True
+                    reverse=True,
                 )
                 if not h5_out_candidates:
                     raise FileNotFoundError(f"h5 dlc output file for video {vid_stem} not found")
