@@ -14,7 +14,10 @@ RodeOFlow is a Python toolbox for quantifying facial and body movements in head-
 
 ## Installation
 The easiest way for installation is to use one of our simple installation scripts which you can download and run for an automatic installation process.
-Since these scripts depend on conda, please make sure to have conda available on your system before running the scripts.
+
+The installation scripts will automatically setup a conda environment and install all packages required to run RodeOFlow.
+Please note that lightning-pose inference will not work on macOS.
+Since the installation scripts depend on conda, please make sure to have conda available on your system before running the scripts.
 
 Download one of the following files depending on your OS (Right-click -> **Save link as...**):
 * [Linux installer script](https://raw.githubusercontent.com/BarnstedtLab/RodeOFlow/dev/installer_linux.sh?raw=true)
@@ -39,6 +42,12 @@ Windows:
 
 ```powershell
 .\path\to\installer_windows.ps1
+```
+
+The installed conda environment can then be activated via (same for all OS):
+
+```bash
+conda activate rodeoflow 
 ```
 
 
