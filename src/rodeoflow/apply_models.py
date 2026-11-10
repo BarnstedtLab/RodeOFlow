@@ -212,6 +212,7 @@ class LPDetector(KeypointEngine):
                 video_result = str(labeled_mp4)
                 print(f"Using existing labeled video: {labeled_mp4}")
         return(str(preds_csv) if preds_csv.is_file() else None, video_result,)
+
 class DLCDetector(KeypointEngine):
     def __init__(self, model_cfg_path, model_path, shuffle=3):
         self.model_path = model_path
