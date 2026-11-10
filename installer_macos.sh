@@ -31,24 +31,6 @@ curl -fsSL "$REPO/environment/$ENV_FILE" -o "$TMP_YAML"
 echo "Creating Conda environment..."
 conda env create -f "$TMP_YAML"
 
-# Install Lightning Pose dependencies
-echo "Installing Lightning Pose dependencies..."
-conda run -n "$ENV_NAME" python -m pip install \
-    "numpy<2" \
-    fiftyone \
-    hydra-core \
-    imgaug \
-    kaleido \
-    kornia \
-    lightning \
-    matplotlib \
-    "moviepy<2"
-
-# Install Lightning Pose without NVIDIA DALI
-echo "Installing Lightning Pose 1.8.1..."
-conda run -n "$ENV_NAME" \
-    python -m pip install lightning-pose==1.8.1 --no-deps
-
 # Install DeepLabCut
 echo "Installing DeepLabCut..."
 conda run -n "$ENV_NAME" \
@@ -63,7 +45,7 @@ conda run -n "$ENV_NAME" \
 # Verify
 echo "Verifying installation..."
 conda run -n "$ENV_NAME" python -c \
-    "from rodeoflow import pose_face, analyse_face; print('RodeOFlow OK')"
+    "from rodeoflow import pose_face, analyse_face, pose_body, analyse_body; print('RodeOFlow OK')"
 
 echo ""
 echo "======================================"
