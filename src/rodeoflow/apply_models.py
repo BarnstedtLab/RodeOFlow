@@ -140,41 +140,78 @@ class LPDetector(KeypointEngine):
         df.to_hdf(out_h5, key="df_with_missing", mode="w")
         return str(out_h5)
 
-    
-    def detect_keypoints(self,
+    def detect_keypoints(
+        self,
         video_file: str,
         out_dir: str,
         make_labeled_video: bool = False,
         overwrite: bool = False,
-        prediction_suffix: str = ""):
-        from lightning_pose.utils.predictions import export_predictions_and_labeled_video
+        prediction_suffix: str = "",):
+
+        import tempfile
+        import warnings
+        from lightning_pose.utils.predictions import (export_predictions_and_labeled_video,generate_labeled_video,)
 
         out_path = Path(out_dir)
-        if not out_path.exists():
-            out_path.mkdir(exist_ok=True, parents=True)
-        base = os.path.splitext(os.path.basename(video_file))[0] + prediction_suffix
+        out_path.mkdir(parents=True, exist_ok=True)
+        base = Path(video_file).stem + prediction_suffix
         preds_csv = out_path / f"{base}.csv"
-        labeled_mp4 = out_path.parent /  f"{base}_labeled.mp4" if make_labeled_video else None
+        preds_h5 = out_path / f"{base}.h5"
+        labeled_mp4 = out_path.parent / f"{base}_labeled.mp4"
 
-        if not overwrite and preds_csv.is_file():
-            preds_h5 = preds_csv.with_suffix(".h5")
-            if not preds_h5.is_file():
-                self.lp_csv_to_dlc_h5(str(preds_csv), out_h5=preds_h5)
-            return str(preds_csv), str(labeled_mp4)
-
-        autocast_enabled = (autocast(device_type=self.device) if self.device in ["cuda", "cpu"] else nullcontext())
-        with torch.no_grad():
-            with autocast_enabled:
-                export_predictions_and_labeled_video(
-                    video_file=video_file,
-                    cfg=self.cfg,
-                    prediction_csv_file=str(preds_csv),
-                    ckpt_file=self.model_path,
-                    labeled_mp4_file=str(labeled_mp4) if make_labeled_video else None,
-                )
-        self.lp_csv_to_dlc_h5(str(preds_csv))
-        return preds_csv, labeled_mp4
-
+        # 1. Generate predictions without rendering a labeled video.
+        # Reuse an existing CSV or H5 unless overwrite=True.
+        run_prediction = overwrite or not (preds_csv.is_file() or preds_h5.is_file())
+        if run_prediction:
+            autocast_enabled = (autocast(device_type=self.device) if self.device in ["cuda", "cpu"] else nullcontext())
+            with torch.no_grad():
+                with autocast_enabled:
+                    export_predictions_and_labeled_video(
+                        video_file=str(video_file),
+                        cfg=self.cfg,
+                        prediction_csv_file=str(preds_csv),
+                        ckpt_file=self.model_path,
+                        labeled_mp4_file=None,)
+            if not preds_csv.is_file():
+                raise FileNotFoundError(f"LP did not create the prediction CSV: {preds_csv}")
+        # 2. Save analysis-ready H5 before any optional video rendering.
+        if run_prediction or not preds_h5.is_file():
+            self.lp_csv_to_dlc_h5(str(preds_csv),out_h5=preds_h5,)
+        print(f"Tracking H5 ready: {preds_h5}")
+        # 3. Render the optional labeled video from saved predictions.
+        video_result = None
+        if make_labeled_video:
+            needs_video = (overwrite or not labeled_mp4.is_file() or labeled_mp4.stat().st_size == 0)
+            if needs_video:
+                try:
+                    predictions = pd.read_hdf(preds_h5,key="df_with_missing",)
+                    # Write to a temporary location so a failed render
+                    # does not leave a partial final video.
+                    with tempfile.TemporaryDirectory(prefix="rodeoflow_label_",dir=str(labeled_mp4.parent),) as temp_dir:
+                        temporary_video = Path(temp_dir) / "labeled.mp4"
+                        generate_labeled_video(
+                            video_file=str(video_file),
+                            preds_df=predictions,
+                            output_mp4_file=str(temporary_video),
+                            confidence_thresh_for_vid=0.1,
+                            colormap="cool",)
+                        if (not temporary_video.is_file() or temporary_video.stat().st_size == 0):
+                            raise RuntimeError("LP returned without creating a nonempty video.")
+                        temporary_video.replace(labeled_mp4)
+                    video_result = str(labeled_mp4)
+                    print(f"Labeled video saved: {labeled_mp4}")
+                except Exception as exc:
+                    warnings.warn(
+                        f"Tracking H5 is saved at {preds_h5}, but labeled "
+                        f"video creation failed: {type(exc).__name__}: {exc}. "
+                        "Run again with overwrite=False to retry rendering "
+                        "without repeating prediction.",
+                        RuntimeWarning,
+                        stacklevel=2,)
+            else:
+                video_result = str(labeled_mp4)
+                print(f"Using existing labeled video: {labeled_mp4}")
+        return(str(preds_csv) if preds_csv.is_file() else None, video_result,)
 class DLCDetector(KeypointEngine):
     def __init__(self, model_cfg_path, model_path, shuffle=3):
         self.model_path = model_path
@@ -338,13 +375,18 @@ class DLCDetector(KeypointEngine):
             if make_labeled_video:
                 vid_stem = Path(video_file).stem
                 h5_out_candidates = sorted(
-                    Path(out_dir).glob(f"{vid_stem}*shuffle{self.shuffle}*.h5"),
+                    (p for p in Path(out_dir).glob(f"{vid_stem}*shuffle{self.shuffle}*.h5")
+                        if p.is_file() and not p.stem.endswith("_rodeoflow")),
                     key=lambda p: p.stat().st_mtime,
-                    reverse=True
+                    reverse=True,
                 )
                 if not h5_out_candidates:
                     raise FileNotFoundError(f"h5 dlc output file for video {vid_stem} not found")
                 h5_out = str(h5_out_candidates[0])
-                self.create_labeled_video(video_file,
-                    h5_out,
-                    str(self.pose_cfg))
+                labeled_mp4 = (Path(video_file).parent / f"{Path(h5_out).stem}_labeled.mp4" )
+                self.create_labeled_video(
+                    video_path=video_file,
+                    h5_path=h5_out,
+                    pose_cfg_path=str(self.pose_cfg),
+                    out_path=str(labeled_mp4),
+                )
