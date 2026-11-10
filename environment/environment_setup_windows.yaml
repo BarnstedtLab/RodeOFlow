@@ -1,28 +1,27 @@
 name: rodeoflow
 channels:
   - pytorch
-  - nvidia
   - conda-forge
   - defaults
 dependencies:
   - python=3.10
-  # CUDA-enabled PyTorch from conda
-  - pytorch
-  - torchvision
-  - torchaudio
-  - pytorch-cuda=12.4
+  
+  # Pull explicitely from pytorch channel (nvidia channel got deprecated)
+  - pytorch::pytorch
+  - pytorch::torchvision
+  - pytorch::torchaudio
+  - pytorch::pytorch-cuda=12.4
+  
+  # Conda-forge
   - numpy=1.26.4
   - h5py
   - pytables>=3.9.2
   - ffmpeg
   - scipy
   - pandas
+  - transformers<4.44
+  - pyocclient
+
   - pip
   - pip:
       - lightning-pose==1.8.1
-      - transformers<4.44
-      - pyocclient # for downloading owncloud files
-
-  # Install DLC manually(!!)
-  # (not in this file because the pre release version is needed for pytorch support) via:
-  # pip install --pre deeplabcut
