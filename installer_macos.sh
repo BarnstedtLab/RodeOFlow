@@ -2,7 +2,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-REPO="https://raw.githubusercontent.com/BarnstedtLab/RodeOFlow/dev"
+REPO="https://raw.githubusercontent.com/BarnstedtLab/RodeOFlow/master"
 ENV_FILE="environment_setup_macos.yaml"
 ENV_NAME="rodeoflow"
 
@@ -58,7 +58,7 @@ conda run -n "$ENV_NAME" \
 echo "Installing RodeOFlow..."
 conda run -n "$ENV_NAME" \
     python -m pip install \
-    git+https://github.com/BarnstedtLab/RodeOFlow.git@dev --no-deps
+    git+https://github.com/BarnstedtLab/RodeOFlow.git@master --no-deps
 
 # Verify
 echo "Verifying installation..."
