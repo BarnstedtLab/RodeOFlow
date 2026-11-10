@@ -1,8 +1,8 @@
 Installation
 ============
 
-RodeOFlow can be installed in a Conda environment on Linux or Windows. A
-Docker route for NVIDIA GPU-accelerated Farneback optical flow is also being
+RodeOFlow can be installed in a Conda environment on Linux, Windows or MacOS.
+A full container (Singularity / Apptainer) installation for easy access to GPU-accelerated Farneback optical flow via cuda on NVIDIA GPUs is also being
 prepared.
 
 Requirements
@@ -10,8 +10,50 @@ Requirements
 
 For the Conda installation, you need Git and Conda (Miniforge or Anaconda).
 
-Create the Conda environment
-----------------------------
+Automatic installation via installation scripts
+------------------------------------------------
+The easiest way for installation is to use one of our installation scripts which you can download and run for an automatic installation process.
+
+The installation scripts will automatically setup a conda environment and install all packages required to run RodeOFlow.
+Please note that lightning-pose inference will not work on macOS or windows.
+Please make sure you have the requirements installed before running the scripts.
+
+Download one of the following files depending on your OS (Right-click -> **Save link as...**):
+
+- `Linux installer script <https://raw.githubusercontent.com/BarnstedtLab/RodeOFlow/master/installer_linux.sh?raw=true>`_
+- `macOS installer script <https://raw.githubusercontent.com/BarnstedtLab/RodeOFlow/master/installer_macos.sh?raw=true>`_
+- `Windows installer script <https://raw.githubusercontent.com/BarnstedtLab/RodeOFlow/master/installer_windows.ps1?raw=true>`_
+
+After downloading to ``/path/to/installer_*``, you can execute the script using one of the following commands:
+
+MacOs:
+
+.. code-block:: bash
+
+   bash /path/to/installer_macos.sh
+
+Linux:
+
+.. code-block:: bash
+
+   bash /path/to/installer_linux.sh
+
+Windows:
+
+.. code-block:: powershell
+
+   bash .\path\to\installer_windows.ps1
+
+
+After the installation has completed, you can activate the rodeoflow conda environment via:
+
+.. code-block:: bash
+
+   conda activate rodeoflow
+
+
+Manual installation via conda environment setup
+------------------------------------------------
 
 Clone the repository and enter its folder:
 
