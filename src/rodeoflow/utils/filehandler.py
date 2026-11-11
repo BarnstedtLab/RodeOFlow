@@ -35,8 +35,18 @@ def get_files2analyse(keypoint_dir, analysis_type: str, overwrite: bool = False)
                     if legacy_file.is_file() and not standardized_file.is_file():
                         body_files.add(legacy_file)
 
-        all_files = sorted(body_files)
+        raw_files = sorted(body_files)
     else:
-        all_files = sorted(d.glob(f'*DLC*Mouse{cased_type}*.h5'))
+        raw_files = sorted(d.glob(f'*DLC*Mouse{cased_type}*.h5'))
 
-    return all_files
+    # Exclude downstream rodeoflow output files
+    filtered_files = [f for f in raw_files if not f.name.endswith('_rodeoflow.h5')]
+
+    # Optional: If overwrite=False, exclude input files that already have a corresponding _rodeoflow.h5 output
+    if not overwrite:
+        filtered_files = [
+            f for f in filtered_files 
+            if not f.with_name(f"{f.stem}_rodeoflow.h5").exists()
+        ]
+
+    return filtered_files
