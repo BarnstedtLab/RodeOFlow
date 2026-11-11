@@ -8,6 +8,7 @@ Starts detection process of keypoints.
 
 
 from pathlib import Path
+import platform
 from rodeoflow.utils.preprocess_video import flip_vid, crop_vid
 from rodeoflow.apply_models import LPDetector, DLCDetector, download_models
 
@@ -17,7 +18,7 @@ class KeypointDetector():
                  crop_box_face=None, flip_input_face=False, 
                  flip_input_body=False, keypoint_model_weights_face=None,
                  keypoint_model_weights_body=None, models_dir=None, 
-                 keypoint_engine_body='LP', filetype_body='mp4',
+                 keypoint_engine_body='DLC', filetype_body='mp4',
                  crop_box_body=None, overwrite=False, save_labeled_videos=True):
 
         self.keypoint_engine_face = keypoint_engine_face
@@ -26,6 +27,9 @@ class KeypointDetector():
         self.keypoint_model_weights_face = keypoint_model_weights_face
         self.models_dir = models_dir
         self.keypoint_engine_body = keypoint_engine_body
+        if platform.system() == "Darwin" and keypoint_engine_body == 'LP':
+            print("Warning: Lightning Pose ('LP') inference is incompatible with macOS, using DeepLabCut instead.")
+            self.keypoint_engine_body = 'DLC'
         self.filetype_face = filetype_face
         self.filetype_body = filetype_body
         self.flip_input_body = flip_input_body
@@ -160,16 +164,15 @@ class KeypointDetector():
                 body_file_path = Path(bodyfile)
                 base = body_file_path.stem
                 
-                if self.keypoint_engine_body == 'LP':
-                    prediction_base = f"{base}_LP_MouseBody"
-                    out_exists = [path for path in (dir_out / f"{prediction_base}.h5", dir_out / f"{prediction_base}.csv",) if path.exists()]
+                if self.keypoint_engine_body == "LP":
+                    prediction_h5 = dir_out / f"{base}_LP_MouseBody.h5"
+                    out_exists = [prediction_h5] if prediction_h5.is_file() else []
                 else:
-                    out_exists = list(dir_out.glob(f"{base}*.h5")) + list(dir_out.glob(f"{base}*.csv"))
+                    out_exists = [path for path in dir_out.glob("*.h5") if path.is_file() and path.stem.startswith(f"{base}DLC") and "MouseBody" in path.stem[len(base):] and not path.stem.endswith("_rodeoflow")]
 
-                if out_exists and not self.overwrite:
+                if (self.keypoint_engine_body != "LP" and out_exists and not self.overwrite):
                     print(f"Skipping {body_file_path.name} (already labelled: {out_exists[0]}).")
                     continue
-
                 print("Applying BODY model:", cfg, "weights:", self.keypoint_model_weights_body)
                 if self.keypoint_engine_body == 'LP':
                     det = LPDetector(cfg, self.keypoint_model_weights_body)

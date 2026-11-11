@@ -87,7 +87,7 @@ class FaceAnalyzer():
                 face_smooth.loc[:, face_smooth.columns.str.startswith('MotionEnergy')].rolling(
                 window=smoothing_windows_frames['MotionEnergy'], center=True).mean().astype('float32')
 
-        # Detect saccades from 2D pupil speed
+        # Calculate 2D pupil speed from frame-to-frame displacement
         pupil_x = median_filter(face_smooth["PupilX"].to_numpy(dtype=float), size=3)
         pupil_y = median_filter(face_smooth["PupilY"].to_numpy(dtype=float), size=3)
         vx = np.diff(pupil_x) * FaceCam_FPS
@@ -107,31 +107,34 @@ class FaceAnalyzer():
             speed_normalized = speed_px_s / reference_lid_separation
         else:
             speed_normalized = np.full(speed_px_s.shape, np.nan)
-        # Align transition speeds to the frame where each transition ends.
-        speed_by_frame = np.full(len(face_smooth), np.nan)
-        speed_by_frame[1:] = speed_normalized
-        face_smooth["PupilSpeed_EyeOpeningPerSec"] = pd.Series(speed_by_frame, index=face_smooth.index)
-        # Z-score continuous signals. The normalized speed is also retained
-        # in face_smooth in its interpretable normalized units.
+        # Align each transition speed to the frame where that transition ends
+        speed_px_s_by_frame = np.full(len(face_smooth), np.nan)
+        speed_px_s_by_frame[1:] = speed_px_s
+        speed_normalized_by_frame = np.full(len(face_smooth), np.nan)
+        speed_normalized_by_frame[1:] = speed_normalized
+        face_smooth["PupilSpeed_px_s"] = pd.Series(speed_px_s_by_frame, index=face_smooth.index)
+        face_smooth["PupilSpeed_EyeOpeningPerSec"] = pd.Series(speed_normalized_by_frame, index=face_smooth.index)
+        # Z-score continuous signals; face_smooth retains the interpretable
+        # pixel-per-second and normalized speed values.
         face_zscore = face_smooth.apply(lambda a: (a - a.mean()) / a.std(ddof=0))
-        # Adaptive saccade thresholds with hysteresis, applied to normalized speed.
+        # Adaptive thresholds with hysteresis, applied to normalized speed
         is_saccade = np.zeros(len(speed_normalized), dtype=bool)
         valid_speed = np.isfinite(speed_normalized)
         if valid_speed.any():
             mu = np.nanmean(speed_normalized)
             sigma = np.nanstd(speed_normalized)
-            high_thr = mu + 1.5 * sigma
-            low_thr = mu + 1.0 * sigma
-            candidate_frames = np.flatnonzero(speed_normalized > high_thr)
-            for peak in candidate_frames:
-                start = peak
-                while start > 0 and speed_normalized[start] > low_thr:
-                    start -= 1
-                end = peak
-                while (end < len(speed_normalized) - 1 and speed_normalized[end] > low_thr):
-                    end += 1
-                is_saccade[start:end + 1] = True
-            is_saccade &= valid_speed
+            if np.isfinite(sigma) and sigma > 0:
+                high_thr = mu + 1.5 * sigma
+                low_thr = mu + 1.0 * sigma
+                candidate_frames = np.flatnonzero(valid_speed & (speed_normalized > high_thr))
+                for peak in candidate_frames:
+                    start = peak
+                    while (start > 0 and valid_speed[start - 1] and speed_normalized[start - 1] > low_thr):
+                        start -= 1
+                    end = peak
+                    while (end + 1 < len(speed_normalized) and valid_speed[end + 1] and speed_normalized[end + 1] > low_thr):
+                        end += 1
+                    is_saccade[start:end + 1] = True
         saccade_frames = np.zeros(len(face_smooth), dtype=int)
         saccade_frames[1:] = is_saccade.astype(int)
         face_zscore["Saccades"] = pd.Series(saccade_frames, index=face_smooth.index)

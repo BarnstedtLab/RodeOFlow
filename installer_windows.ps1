@@ -25,7 +25,7 @@ $TEMP_YAML = Join-Path $env:TEMP $ENV_FILE
 Write-Host "Downloading Windows environment..."
 
 Invoke-WebRequest `
-    -Uri "$REPO/$ENV_FILE" `
+    -Uri "$REPO/environment/$ENV_FILE" `
     -OutFile $TEMP_YAML
 
 try {
@@ -38,24 +38,6 @@ try {
         throw "Conda environment creation failed."
     }
 
-    # Install Lightning Pose dependencies
-    Write-Host "Installing Lightning Pose dependencies..."
-
-    conda run -n $ENV_NAME python -m pip install `
-        "numpy<2" `
-        fiftyone `
-        hydra-core `
-        imgaug `
-        kaleido `
-        kornia `
-        lightning `
-        matplotlib `
-        "moviepy<2"
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "Lightning Pose dependencies installation failed."
-    }
-
     # Install DeepLabCut
     Write-Host "Installing DeepLabCut..."
 
@@ -65,21 +47,11 @@ try {
         throw "DeepLabCut installation failed."
     }
 
-    # Install Lightning Pose without DALI
-    Write-Host "Installing Lightning Pose 1.8.1..."
-
-    conda run -n $ENV_NAME python -m pip install `
-        lightning-pose==1.8.1 --no-deps
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "Lightning Pose installation failed."
-    }
-
     # Install RodeOFlow
     Write-Host "Installing RodeOFlow..."
 
     conda run -n $ENV_NAME python -m pip install `
-        git+https://github.com/BarnstedtLab/RodeOFlow.git --no-deps
+        git+https://github.com/BarnstedtLab/RodeOFlow.git@master --no-deps
 
     if ($LASTEXITCODE -ne 0) {
         throw "RodeOFlow installation failed."
