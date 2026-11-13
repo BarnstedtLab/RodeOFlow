@@ -406,17 +406,20 @@ class FaceAnalyzer():
         print(f"Total Frames Processed:   {num_frames}")
         print(f"Optical Flow Throughput:  {of_throughput_fps:.2f} FPS")
 
-        return df_statistics, flow_grid
+        return df_statistics, flow_grid, masks
 
     def _to_h5(self, out_file: Path, face_masks, face_anchor: pd.DataFrame, face: pd.DataFrame):
-            mf_out_file = str(out_file)
-            with h5py.File(mf_out_file, "a") as out:
-                if "facemasks" in out:
-                    del out["facemasks"]
-                out.create_dataset("facemasks", data=face_masks)
-            face_anchor.to_hdf(mf_out_file, key="face_anchor", mode="a")
-            face.to_hdf(mf_out_file, key="face", mode="a")
-            print(f"saved rodeoflow face analysis to {mf_out_file}")
+        mf_out_file = str(out_file)
+        with h5py.File(mf_out_file, "a") as out:
+            if "facemasks" in out:
+                del out["facemasks"]
+        mask_names = ['nose', 'whiskers', 'mouth', 'cheek']
+        for name, mask in zip(mask_names, face_masks):
+            pd.DataFrame(mask).to_hdf(mf_out_file, key=f"facemasks/{name}", mode="a")
+            
+        face_anchor.to_hdf(mf_out_file, key="face_anchor", mode="a")
+        face.to_hdf(mf_out_file, key="face", mode="a")
+        print(f"saved rodeoflow face analysis to {mf_out_file}")
 
     def _interpolation_limits(self, fps: float, min_frames: int=1):
         out : dict[str, int] = {}
@@ -548,7 +551,7 @@ class FaceAnalyzer():
         if not self._has_gpu_support():
             self.opticalflow_enigne = 'DIS'
             print("No CUDA support detected. Processing with DIS optical flow on your CPU...")
-        face_motion, flow_grid = self._facemotion(
+        face_motion, flow_grid, updated_face_masks = self._facemotion(
             video_file, face_masks, face_anchor, use_nmf_masks=use_nmf_masks)
 
         # Perform PCA on Nose (Reference: Downwards, positive Y)
@@ -585,6 +588,6 @@ class FaceAnalyzer():
 
         cap.release()
         face = self._process_raw_data(self.cfg.smoothing_windows_sec, self.cfg.na_limit, fps, interpolation_limits, face_raw)
-        self._to_h5(out_file, face_masks, face_anchor, face)
+        self._to_h5(out_file, updated_face_masks, face_anchor, face)
         if flow_grid is not None:
             np.savez_compressed(out_grid, flow=flow_grid)
