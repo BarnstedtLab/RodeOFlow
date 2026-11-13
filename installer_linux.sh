@@ -33,9 +33,10 @@ echo "Creating Conda environment..."
 conda env create -f "$TMP_YAML"
 
 # Install DeepLabCut
-echo "Installing DeepLabCut..."
+DLC_VERSION="3.0.2"
+echo "Installing DeepLabCut ${DLC_VERSION}..."
 conda run -n "$ENV_NAME" \
-    python -m pip install --pre deeplabcut
+    python -m pip install "deeplabcut==${DLC_VERSION}"
 
 # Install RodeOFlow
 echo "Installing RodeOFlow..."

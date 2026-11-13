@@ -40,8 +40,7 @@ try {
 
     # Install DeepLabCut
     Write-Host "Installing DeepLabCut..."
-
-    conda run -n $ENV_NAME python -m pip install --pre deeplabcut
+    conda run -n $ENV_NAME python -m pip install "deeplabcut==3.0.2"
 
     if ($LASTEXITCODE -ne 0) {
         throw "DeepLabCut installation failed."
