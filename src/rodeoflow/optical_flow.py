@@ -39,6 +39,7 @@ class DynamicMasks:
         
         # Instantiate a dedicated DIS object (only for NMF mask calibration!)
         self.dis = cv2.DISOpticalFlow_create(preset)
+        self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 
     def set_masks(self, masks: list[np.ndarray]):
         for i, m in enumerate(masks):
@@ -120,8 +121,17 @@ class DynamicMasks:
             if not ret1 or not ret2 or frame1 is None or frame2 is None:
                 continue
             
-            prev_gray = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
-            cur_gray = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
+            # prev_gray = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
+            # cur_gray = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
+            
+            # flow_full = self.dis.calc(prev_gray, cur_gray, None)
+            # flow_full[face_mask == 0] = 0.0
+
+            raw_prev = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
+            raw_cur = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
+            
+            prev_gray = self.clahe.apply(raw_prev)
+            cur_gray = self.clahe.apply(raw_cur)
             
             flow_full = self.dis.calc(prev_gray, cur_gray, None)
             flow_full[face_mask == 0] = 0.0
@@ -524,6 +534,8 @@ class DISFlowOF(BaseOF):
         self.finest_scale = 1 + int(np.log2(self.downsample_factor))
         self.dis.setFinestScale(self.finest_scale)
 
+        self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+
         self.masks = []
         self.masks_sparse = None
         self.px_per_mask = None
@@ -593,7 +605,10 @@ class DISFlowOF(BaseOF):
         self.mag  = np.empty((self.height, self.width), np.float32)
         self.ang  = np.empty((self.height, self.width), np.float32)
 
-        self.prev_gray = cv2.cvtColor(frame0, cv2.COLOR_BGR2GRAY)
+        gray0 = cv2.cvtColor(frame0, cv2.COLOR_BGR2GRAY)
+        self.prev_gray = self.clahe.apply(gray0)
+
+        # self.prev_gray = cv2.cvtColor(frame0, cv2.COLOR_BGR2GRAY)
         
         if self.start == 0:
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
@@ -624,9 +639,13 @@ class DISFlowOF(BaseOF):
             ret, frame = self.cap.read()
             if not ret:
                 return {}
+
+            raw_prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            self.prev_gray = self.clahe.apply(raw_prev_gray)
+            calc_h, calc_w = self.prev_gray.shape
             
-            self.prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            calc_h, calc_w = self.prev_gray.shape 
+            # self.prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            # calc_h, calc_w = self.prev_gray.shape 
             
             w_downsampled = int(self.width // self.downsample_save_factor)
             h_downsampled = int(self.height // self.downsample_save_factor)
@@ -646,11 +665,13 @@ class DISFlowOF(BaseOF):
                 if not ret or frame_idx >= max_frames - 1:
                     break
                 
-                self.cur_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                raw_cur_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 
-                if self.cur_gray.shape != (calc_h, calc_w):
-                    self.cur_gray = cv2.resize(self.cur_gray, (calc_w, calc_h))
-                
+                if raw_cur_gray.shape != (calc_h, calc_w):
+                    raw_cur_gray = cv2.resize(raw_cur_gray, (calc_w, calc_h))
+
+                self.cur_gray = self.clahe.apply(raw_cur_gray)
+                self.cur_gray = cv2.GaussianBlur(self.cur_gray, (3, 3), 0)
                 # Flow is natively computed and upsampled back to calc_h x calc_w
                 self.flow = self.dis.calc(self.prev_gray, self.cur_gray, self.flow)
                 

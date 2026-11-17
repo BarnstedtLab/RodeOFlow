@@ -430,39 +430,54 @@ class FaceAnalyzer():
                 out[key] = int(max(min_frames, round(float(val) * float(fps))))
         return out
 
-    def _perform_pca(self, angles, magnitudes, axis=None, reference_vector=None):
-        u = magnitudes * np.cos(angles)
-        v = magnitudes * np.sin(angles)
-        u = u.flatten()
-        v = v.flatten()
-        if (np.isnan(u).any() or np.isnan(v).any()):
-            print(f"found nans: u -> {np.isnan(u).sum()}, v -> {np.isnan(v).sum()}")
-        u = np.nan_to_num(u, 0.)
-        v = np.nan_to_num(v, 0.)
+    def _perform_pca(
+        self,
+        angles,
+        magnitudes,
+        axis=None,
+        reference_vector=None,
+        uncentered: bool = True,
+    ):
+        u = np.asarray(magnitudes, dtype=np.float64).ravel() * np.cos(np.asarray(angles, dtype=np.float64).ravel())
+        v = np.asarray(magnitudes, dtype=np.float64).ravel() * np.sin(np.asarray(angles, dtype=np.float64).ravel())
 
-        X = np.column_stack((u, v))
+        valid = np.isfinite(u) & np.isfinite(v)
+        if not valid.all():
+            print(f"found nans: u -> {np.isnan(u).sum()}, v -> {np.isnan(v).sum()} (excluded from PCA fit)")
+
+        if valid.sum() < 2:
+            raise ValueError("Insufficient finite optical flow frames to fit PCA.")
+
+        X_valid = np.column_stack((u[valid], v[valid]))
+        # Symmetrizing forces sample mean to (0, 0) -> PCA fits an uncentered vector through the origin
+        X_fit = np.vstack((X_valid, -X_valid)) if uncentered else X_valid
+
         pca = PCA(n_components=1)
-        pca.fit(X)
+        pca.fit(X_fit)
 
         if axis is None:
-            main_axis = pca.components_[0]
-            # Flip axis if it points away from the reference vector
+            main_axis = pca.components_[0].copy()
             if reference_vector is not None:
-                if np.dot(main_axis, reference_vector) < 0:
-                    main_axis[0] *= -1
-                    main_axis[1] *= -1
-                    print('Main axis rotated to align with reference vector!')
+                ref = np.asarray(reference_vector, dtype=np.float64).ravel()
+                if np.linalg.norm(ref) > 1e-8 and np.dot(main_axis, ref) < 0:
+                    main_axis *= -1.0
+                    print("Main axis rotated to align with reference vector!")
         else:
-            main_axis = axis
+            main_axis = np.asarray(axis, dtype=np.float64).ravel()
+            main_axis = main_axis / np.linalg.norm(main_axis)
 
         explained_var = pca.explained_variance_ratio_[0]
-
         print(f"Main Axis of Motion: u={main_axis[0]:.2f}, v={main_axis[1]:.2f}")
         print(f"This axis explains {explained_var*100:.1f}% of all movement.")
 
-        # Project data onto the final axis
-        projection = u * main_axis[0] + v * main_axis[1]
+        # preserving NaNs
+        if uncentered:
+            projection = u * main_axis[0] + v * main_axis[1]
+        else:
+            projection = (u - pca.mean_[0]) * main_axis[0] + (v - pca.mean_[1]) * main_axis[1]
+
         return projection, main_axis
+
     @staticmethod
     def _windowed_spectral_metric(x,fps,metric,fmin,fmax,window_sec=3.0,):
         """Estimate a dominant spectral peak or spectral centroid per window."""

@@ -299,9 +299,9 @@ class NMFBuilder:
                     # find the best possible threshold to differentiate background from actual foreground weights
                     otsu_thresh, _ = cv2.threshold(nonzero_pixels, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
                     # scale threshould back to [0, 1] + add a small penalty for large weights
-                    dynamic_thresh = (otsu_thresh / 255.0) * 1.2
+                    dynamic_thresh = (otsu_thresh / 255.0) * 0.8
                     # clip threshold to exclude extreme values 
-                    dynamic_thresh = np.clip(dynamic_thresh, 0.2, 0.8)
+                    dynamic_thresh = np.clip(dynamic_thresh, 0.1, 0.8)
                 else:
                     dynamic_thresh = 0.5
 
